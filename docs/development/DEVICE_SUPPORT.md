@@ -1,6 +1,8 @@
-# FreeDroid — Device Support
+# FreeDroid — Device Support Strategy
 
-**Status:** Design intent. No device has been built for or booted.
+**Phase:** 0 (Environment + Architecture)
+**Status:** Design intent. **No device has been built for or booted.**
+**Physical device selection:** **NONE. Deliberately deferred.**
 
 ---
 
@@ -8,52 +10,99 @@
 
 FreeDroid maintains **one** operating system codebase. Phones and tablets differ
 in device configuration and in runtime layout decisions — never in a separate
-source tree, a separate build of the UI apps, or a separate branch.
+source tree, a separate application build, or a separate branch.
 
 Two codebases diverge. Divergence means a security fix applied to one and
-forgotten on the other, which is a security failure and not merely a maintenance
-cost.
+forgotten on the other. That is a security failure, not merely a maintenance
+cost, and it is the reason this is a hard architectural rule rather than a
+preference.
 
-## 2. Device target roadmap
+---
 
-| Phase | Target | Form factor | Status |
+## 2. Initial validation targets
+
+```text
+aosp_cf_x86_64_phone       Cuttlefish virtual phone    — Phases 1-3 baseline
+aosp_cf_x86_64_tablet      Cuttlefish virtual tablet   — Phase 9 validation
+```
+
+Later, once the FreeDroid product exists (Phase 4+):
+
+```text
+freedroid_cf_x86_64_phone
+freedroid_cf_x86_64_tablet
+```
+
+Both derive from the same FreeDroid codebase and the same source. They differ in
+device configuration only.
+
+**Neither has been built. Neither has been booted.** Cuttlefish requires
+`/dev/kvm`, which the current development container does not have.
+
+---
+
+## 3. Why Cuttlefish is the initial target
+
+### 3.1 Versus the goldfish emulator (`aosp_x86_64`)
+
+| Capability | Cuttlefish | Goldfish | Why it matters |
 | --- | --- | --- | --- |
-| 1–3 | `aosp_cf_x86_64_phone` (Cuttlefish) | Virtual phone | Planned |
-| 4–9 | `freedroid_cf_x86_64` (Cuttlefish) | Virtual phone | Planned |
-| 9 | `aosp_cf_x86_64_tablet` (Cuttlefish) | Virtual tablet | Planned |
-| 10 | Reference smartphone (TBD) | Physical phone | Not selected |
-| 11 | Reference tablet (TBD) | Physical tablet | Not selected |
+| Full AVB / Verified Boot chain | ✅ | ⚠️ limited | Phase 8 OTA and Phase 9 hardening depend on it |
+| A/B (Virtual A/B) + `update_engine` | ✅ | ❌ | **Phase 8 is impossible without it** |
+| dm-verity | ✅ | ⚠️ limited | System integrity testing |
+| Matching tablet target | ✅ | ⚠️ | One codebase, both form factors |
+| Reference status | Google's reference virtual device | Legacy SDK emulator | Tracks platform behavior closely |
+| Multi-device / multi-display | ✅ | limited | Large-screen and external-display testing |
 
-### Why Cuttlefish rather than the goldfish emulator
+Phases 8 and 9 require the first three rows. Choosing Cuttlefish at Phase 1
+avoids re-validating everything on a different target later.
 
-| Capability | Cuttlefish | Goldfish (`aosp_x86_64`) |
+### 3.2 Why a virtual device before physical hardware
+
+1. **Reproducible.** Every developer and CI runner gets an identical device. A
+   failure is reproducible rather than attributed to one person's handset.
+2. **No hardware bring-up in the way.** Phases 1–9 test FreeDroid's own
+   architecture. Debugging vendor blobs and kernel bring-up simultaneously would
+   confound every result.
+3. **No flashing risk.** No bricked devices, no bootloader mistakes.
+4. **Parallelizable in CI.** Many instances at once.
+5. **Phase 10 is then a port, not a bring-up plus a port.**
+
+### 3.3 What Cuttlefish cannot demonstrate
+
+Important, and easy to forget under schedule pressure:
+
+| Property | Why not | Deferred to |
 | --- | --- | --- |
-| AVB / Verified Boot chain | ✅ full | ⚠️ limited |
-| A/B (Virtual A/B) + `update_engine` | ✅ | ❌ |
-| dm-verity | ✅ | ⚠️ limited |
-| Matching tablet target | ✅ | ⚠️ |
-| Reference status | Google's reference virtual device | Legacy SDK emulator |
+| Hardware root of trust | No real bootloader, no fused keys | Phase 10 |
+| Hardware-backed Keystore | Software-emulated KeyMint — **no hardware guarantee** | Phase 10 |
+| Rollback protection | No RPMB or tamper-evident monotonic storage | Phase 10 |
+| Real Verified Boot | No locked bootloader, no hardware key | Phase 10 |
+| MTE / PAC / BTI | Not present on x86_64 | Phase 10 (arm64) |
+| Real radio, sensors, camera, battery | Emulated or absent | Phase 10 |
+| Thermal and power behavior | Not modelled | Phase 10 |
 
-Phases 8 (OTA) and 9 (security hardening) need the first three rows. Choosing
-Cuttlefish at Phase 1 avoids re-validating everything on a different target later.
+**A passing security test on Cuttlefish demonstrates correct policy and API
+behavior. It does not demonstrate hardware protection.** The verification table
+in [`SECURITY_MODEL.md`](../security/SECURITY_MODEL.md) Part IV marks which rows
+are hardware-dependent, and those stay unverified until Phase 10.
 
-**Cuttlefish requires `/dev/kvm`.** The current development container does not
-have it. See [`ENVIRONMENT_AUDIT.md`](ENVIRONMENT_AUDIT.md).
+---
 
-## 3. Adaptive UI
+## 4. Form-factor strategy
 
-### Mechanisms
+### 4.1 Mechanisms
 
-| Mechanism | Use |
+| Mechanism | Purpose |
 | --- | --- |
 | Resource qualifiers — `sw600dp`, `sw720dp`, `w840dp`, `-land`, `-port`, `-night` | Layout and resource selection |
 | `WindowSizeClass` (COMPACT / MEDIUM / EXPANDED) | Runtime layout decisions |
-| `WindowMetricsCalculator` | Current window bounds — not display bounds |
+| `WindowMetricsCalculator` | Current **window** bounds, not display bounds |
 | Activity embedding (`SplitController`) | Two-pane list/detail on large windows |
 | `onConfigurationChanged` / state hoisting | Surviving size changes without losing state |
-| `PRODUCT_CHARACTERISTICS` | Build-level config where hardware genuinely differs |
+| `PRODUCT_CHARACTERISTICS` | Build-level config only where hardware genuinely differs |
 
-### Rules for FreeDroid UI code
+### 4.2 The rule
 
 **Prohibited:**
 
@@ -66,24 +115,22 @@ if (display.width > 1200) { … }                            // display, not win
 **Required:**
 
 ```kotlin
-val widthClass = WindowSizeClass.compute(windowMetrics).windowWidthSizeClass
-when (widthClass) {
+when (WindowSizeClass.compute(windowMetrics).windowWidthSizeClass) {
     WindowWidthSizeClass.COMPACT  -> showSinglePane()
     WindowWidthSizeClass.MEDIUM,
     WindowWidthSizeClass.EXPANDED -> showTwoPane()
 }
 ```
 
-The window is not the display. In split-screen, a tablet gives an app a compact
-window; on a foldable, the window changes size mid-session. Branching on device
-category produces a layout that is wrong in both cases — this is a correctness
-requirement, not a style preference.
+The window is not the display. Split-screen on a tablet gives an app a compact
+window; a foldable changes window size mid-session. Device-category branching is
+wrong in both cases — a correctness requirement, not a style preference.
 
-Android 16 additionally ignores orientation and resizability restrictions on
-large screens for apps targeting SDK 36. FreeDroid's apps must handle arbitrary
-window sizes, and FreeDroid must not reintroduce restrictions AOSP removed.
+Android 16 ignores orientation and resizability restrictions on large screens for
+apps targeting SDK 36. FreeDroid's apps must handle arbitrary window sizes, and
+FreeDroid must not reintroduce restrictions AOSP removed.
 
-### Form-factor matrix
+### 4.3 Form-factor matrix
 
 | Configuration | Width class | Expected behavior |
 | --- | --- | --- |
@@ -91,21 +138,21 @@ window sizes, and FreeDroid must not reintroduce restrictions AOSP removed.
 | Phone landscape | COMPACT/MEDIUM | Single pane, adjusted density |
 | Phone split-screen | COMPACT | Single pane in a reduced window |
 | Foldable closed | COMPACT | Single pane |
-| Foldable open | MEDIUM/EXPANDED | Two pane; state preserved across the fold |
+| Foldable open | MEDIUM/EXPANDED | Two pane; **state preserved across the fold** |
 | Tablet portrait | MEDIUM/EXPANDED | Two pane, navigation rail |
-| Tablet landscape | EXPANDED | Two pane or three, rail or drawer |
+| Tablet landscape | EXPANDED | Two or three pane, rail or drawer |
 | Tablet split-screen | COMPACT/MEDIUM | Adapts to the given window |
-| Desktop / external display | EXPANDED | Multi-pane, freeform windows |
+| External display | EXPANDED | Multi-pane, freeform windows |
 
-## 4. Hardware feature handling
+---
+
+## 5. Hardware features
 
 Features are declared, queried, and degraded gracefully — never assumed.
 
 | Feature | Constant | Typical phone | Typical tablet |
 | --- | --- | --- | --- |
-| Telephony | `android.hardware.telephony` | ✅ | varies (Wi-Fi-only tablets) |
-| SMS | `android.hardware.telephony` | ✅ | varies |
-| Cellular data | `android.hardware.telephony` | ✅ | varies |
+| Telephony / SMS / cellular | `android.hardware.telephony` | ✅ | **often absent** |
 | GPS | `android.hardware.location.gps` | ✅ | usually |
 | NFC | `android.hardware.nfc` | usually | rarely |
 | Camera | `android.hardware.camera.any` | ✅ | ✅ |
@@ -115,58 +162,84 @@ Features are declared, queried, and degraded gracefully — never assumed.
 | StrongBox | `android.hardware.strongbox_keystore` | varies | varies |
 
 FreeDroid system apps must query `PackageManager.hasSystemFeature()` and degrade
-cleanly. A tablet without telephony must not show a broken dialer. Third-party
-apps use `<uses-feature>` and are filtered by the platform as on any Android
-device.
+cleanly. **A Wi-Fi-only tablet must not show a broken dialer.** Third-party apps
+use `<uses-feature>` and are filtered by the platform as on any Android device.
 
-## 5. Reference hardware selection criteria
+---
 
-No device has been selected. When the time comes (Phase 10), these are the
-criteria, in priority order:
+## 6. Physical device support — requirements
 
-### Mandatory
+> **No physical device has been selected, and none should be until Phase 10.**
+>
+> Selecting hardware early would bias architecture toward one SoC's quirks and
+> commit the project to vendor blobs and kernel maintenance before any of the
+> architecture has been validated. There is currently no technical reason strong
+> enough to justify that.
 
-1. **Bootloader can be unlocked *and re-locked* with a custom AVB key.**
-   Without re-locking, Verified Boot on the shipped device is theatre — the boot
-   state stays ORANGE, the AVB chain is not rooted in our key, and §T5 of the
-   security model does not hold. This criterion eliminates most devices and must
-   be checked first, not last.
-2. **Rollback index storage in tamper-evident hardware** — required for rollback
-   protection.
-3. **Vendor blobs available with redistribution rights** — or the device is not
-   legally distributable.
-4. **Kernel sources available** (GPLv2 requires this, but availability and
-   *usability* differ).
-5. **Hardware-backed Keystore** (TEE minimum, StrongBox preferred).
+When selection happens, these are the requirements.
 
-### Strongly preferred
+### 6.1 Mandatory — a device failing any of these is disqualified
 
-6. Active vendor security patch support for the intended device lifetime.
-7. Generic Kernel Image (GKI) compatibility — reduces kernel maintenance sharply.
-8. Virtual A/B partition support.
-9. MTE, PAC, BTI support in the SoC.
-10. An existing AOSP or well-maintained community device tree.
+| # | Requirement | Why |
+| --- | --- | --- |
+| 1 | **Bootloader can be unlocked *and re-locked* with a custom AVB key** | Without re-locking, boot state stays ORANGE, the AVB chain is not rooted in our key, and Verified Boot is theatre. **This eliminates most commercial devices and must be verified first, not last.** |
+| 2 | **Tamper-evident monotonic storage** (RPMB or equivalent) | Rollback protection is impossible without it |
+| 3 | **Kernel sources available** | GPLv2 requires it — but availability and *usability* differ |
+| 4 | **Vendor blobs available with redistribution rights** | Otherwise the build is not legally distributable |
+| 5 | **Hardware-backed Keystore** (TEE minimum) | Encryption key derivation and rate limiting depend on it |
 
-### Disqualifying
+### 6.2 Required HAL and hardware support
 
-- Bootloader that cannot be unlocked, or cannot be re-locked with a custom key.
-- Vendor blobs with no redistribution rights.
-- No kernel source.
-- SoC vendor abandoned with no security patches.
+Each must be working before a device is called supported:
 
-## 6. Porting checklist
+| Area | Requirement |
+| --- | --- |
+| Bootloader | Unlock/re-lock, custom AVB key, fastboot |
+| Kernel / device tree | Boots, GKI-compatible preferred |
+| Display | Resolution, density, refresh rate, rotation, brightness |
+| Touch | Multi-touch, gestures, palm rejection |
+| GPU | Hardware acceleration, composition, `SurfaceFlinger` |
+| Wi-Fi | Scan, WPA2/WPA3, throughput, roaming |
+| Bluetooth | Pair, audio profiles, BLE |
+| Camera | Camera2/CameraX, front and rear, video, flash |
+| Audio | Playback, capture, routing, headset, call audio |
+| Battery | Charge, discharge reporting, thermal management |
+| Sensors | Accelerometer, gyroscope, magnetometer, proximity, light |
+| GPS | Cold and warm fix, accuracy |
+| Cellular | Registration, voice, SMS, data, VoLTE — where telephony is present |
+| NFC | Tag read/write, HCE — where present |
+| Keystore / Gatekeeper | Hardware-backed keys, attestation, rate limiting |
 
-Per device, before it is considered supported:
+### 6.3 Strongly preferred
+
+- Active vendor security patch support for the intended device lifetime
+- GKI compatibility — sharply reduces kernel maintenance
+- Virtual A/B partition support
+- MTE, PAC, BTI in the SoC
+- An existing AOSP or well-maintained community device tree
+
+### 6.4 Disqualifying
+
+- Bootloader that cannot be unlocked, or cannot be **re-locked with a custom key**
+- Vendor blobs with no redistribution rights
+- No kernel source
+- SoC vendor abandoned with no security patches
+
+---
+
+## 7. Porting checklist
+
+Per device, before it is called supported:
 
 - [ ] Device tree under `device/freedroid/<device>/`
 - [ ] Kernel builds and boots
-- [ ] Vendor blobs extracted, with documented licensing
-- [ ] AVB configured with a FreeDroid key; boot state verified GREEN when locked
-- [ ] Rollback index configured and tested with an actual downgrade attempt
-- [ ] SELinux policy complete, **enforcing**, with zero denials in normal operation
+- [ ] Vendor blobs extracted, licensing documented
+- [ ] AVB configured with a FreeDroid key; **boot state verified GREEN when locked**
+- [ ] Rollback index configured and tested with an **actual downgrade attempt**
+- [ ] SELinux policy complete, **enforcing**, zero denials in normal operation
 - [ ] FBE enabled and verified on a real userdata partition
-- [ ] A/B (Virtual A/B) working; OTA applies and rolls back on induced failure
-- [ ] All device tests in [`TESTING.md`](TESTING.md) §5 pass
+- [ ] Virtual A/B working; OTA applies and rolls back on induced failure
+- [ ] All DEV tests in [`TESTING.md`](TESTING.md) pass
 - [ ] CTS run with no regression versus the AOSP baseline
 - [ ] CTS Verifier manual tests pass
 - [ ] `user` build passes the release gate
@@ -174,3 +247,15 @@ Per device, before it is considered supported:
 **A device is not "supported" until every box is checked.** Partial support is
 documented as partial, with the specific gaps named. "Mostly works" is not a
 support status a user can act on.
+
+---
+
+## 8. Roadmap
+
+| Phase | Target | Form factor | Status |
+| --- | --- | --- | --- |
+| 1–3 | `aosp_cf_x86_64_phone` | Virtual phone | Planned — blocked on build host |
+| 4–8 | `freedroid_cf_x86_64_phone` | Virtual phone | Planned |
+| 9 | `freedroid_cf_x86_64_tablet` | Virtual tablet | Planned |
+| 10 | Reference smartphone | Physical phone | **Not selected** |
+| 11 | Reference tablet | Physical tablet | **Not selected** |

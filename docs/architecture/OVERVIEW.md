@@ -1,241 +1,552 @@
 # FreeDroid — Architecture Overview
 
-**Status:** Design intent. Nothing in this document has been built or measured yet.
-**Baseline:** AOSP `android-16.0.0_r4`
+**Phase:** 0 (Environment + Architecture)
+**Status:** Design intent. **Nothing described here has been built, booted, or measured.**
+**Planned baseline:** AOSP `android-16.0.0_r4` — *planned, not synced*
 
 ---
 
-## 1. What FreeDroid is
+## 1. Purpose
 
-FreeDroid is an Android-derived operating system. It is **not** a new application
-runtime, and it is not a compatibility layer that happens to run Android apps.
-An ordinary Android APK, built against the public SDK, runs on FreeDroid through
-exactly the same path it runs on any other Android device:
+FreeDroid is a secure, Android-based operating system for smartphones and
+tablets, built on one principle:
 
-```text
-Android APK (unmodified)
-        ↓
-PackageManager  ──  signature verification, permissions, sandbox assignment
-        ↓
-Android Framework  ──  Activity/Window/Notification managers, Binder IPC
-        ↓
-ART  ──  unmodified runtime, unmodified bytecode contract
-        ↓
-Native layer  ──  Bionic, unmodified NDK ABI
-        ↓
-Linux kernel  ──  SELinux, seccomp, UID isolation
-        ↓
-Hardware
-```
+> **Freedom of application installation without sacrificing security.**
 
-FreeDroid adds a layer beside that path, not inside it. The distinction matters:
-anything placed *inside* that path is a compatibility risk and a security risk,
-and must be justified under
-[`ANDROID_COMPATIBILITY.md`](../compatibility/ANDROID_COMPATIBILITY.md).
+Users decide where their applications come from — the FreeDroid Store, a
+third-party store, an F-Droid-style repository, or a downloaded APK. Every one of
+those applications runs inside Android's sandbox, under Android's permission
+model, validated by Android's package manager, with SELinux enforcing.
 
-## 2. Layering
+Distribution freedom and a strong security model are usually presented as a
+trade. FreeDroid's position is that they are only in tension if distribution
+freedom is implemented by weakening the platform. Implemented as *provenance and
+user control around an unmodified installer*, it costs nothing in security.
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Applications                                               │
-│  Third-party APKs · FreeDroid first-party apps              │
-│  (identical API surface — no privileged app class)          │
-├─────────────────────────────────────────────────────────────┤
-│  FreeDroid UI layer                                         │
-│  Launcher · SystemUI extensions · Settings injection        │
-│  One adaptive codebase — phone and tablet by resource       │
-│  qualifiers and window size classes, not by separate builds │
-├─────────────────────────────────────────────────────────────┤
-│  FreeDroid framework extensions                             │
-│  SourceTrustService · UpdateService · FreeDroid SDK         │
-│  Additive. Ordinary apps reach these only through normal    │
-│  permission-guarded Binder interfaces.                      │
-├─────────────────────────────────────────────────────────────┤
-│  Android Framework                     ← UNMODIFIED         │
-│  PackageManager · ActivityManager · WindowManager ·         │
-│  PermissionController · Binder · Intents · lifecycle        │
-├─────────────────────────────────────────────────────────────┤
-│  ART                                   ← UNMODIFIED         │
-├─────────────────────────────────────────────────────────────┤
-│  Native / HAL                          ← UNMODIFIED         │
-│  Bionic · NDK ABI · HIDL/AIDL HALs · Keystore/KeyMint       │
-├─────────────────────────────────────────────────────────────┤
-│  Linux kernel                                               │
-│  SELinux enforcing · seccomp · UID/GID isolation · dm-verity│
-├─────────────────────────────────────────────────────────────┤
-│  Verified Boot (AVB 2.0) · bootloader · hardware root       │
-└─────────────────────────────────────────────────────────────┘
-```
+### Goals
 
-The two layers marked **UNMODIFIED** are where compatibility lives. Changes there
-are not forbidden, but they are the expensive kind, and they carry the review gate.
+1. Broad Android application compatibility.
+2. Multiple application distribution sources, none of them privileged over another.
+3. Security as a first-class architectural constraint, never traded for convenience.
+4. One codebase for phones and tablets.
+5. Maintainability across future Android releases.
+6. Full functionality without Google Play where technically possible.
 
-## 3. Components FreeDroid adds
+### Non-goals
 
-| Component | Type | Phase | Purpose |
-| --- | --- | --- | --- |
-| **FreeDroidLauncher** | System app | 4 | Home screen. Adaptive phone/tablet layout. Replaces Launcher3 via `PRODUCT_PACKAGES`. |
-| **SystemUI overlays** | RRO + additive | 5 | Branding, quick settings tiles, status bar treatment. Overlays where possible; SystemUI source patches only where a tile or component cannot be injected. |
-| **Settings injection** | Settings injection API | 5 | FreeDroid settings appear inside AOSP Settings via the standard injection mechanism, not a forked Settings app. |
-| **FreeDroid Store** | Ordinary app + installer role | 7 | First-party app source. Holds `REQUEST_INSTALL_PACKAGES`; is **not** privileged beyond that. |
-| **SourceTrustService** | System service | 7 | Records per-source user trust decisions; supplies the installer UI with source provenance. Does **not** install anything itself. |
-| **FreeDroid Updater** | System app + `update_engine` | 8 | Fetches, verifies, and stages signed OTAs via AOSP `update_engine`. |
-| **UpdateService** | System service | 8 | Update policy, staging, SPL reporting. |
-| **Branding / RROs** | Resource overlays | 4 | Boot animation, wallpapers, icons, colors, strings. Zero source changes. |
-| **`vendor/freedroid/sepolicy`** | SELinux policy | 6+ | Additive domains for the above. Never `permissive`. |
+- A new application runtime.
+- A replacement for Android's permission or security model.
+- Root access for applications.
+- Lock-in to any single application store, FreeDroid's own included.
 
-## 4. The application distribution architecture
+---
 
-This is the part of FreeDroid that is genuinely novel, so it is the part most
-likely to be got wrong. The design rule is: **add provenance and user control
-around Android's installer, never a second installer path.**
+## 2. Relationship to AOSP
+
+> **FreeDroid is an AOSP-derived operating system. It is not an independent
+> Android-compatible runtime, not a reimplementation of the Android API, and not
+> a compatibility layer that runs Android applications on some other system.**
+
+FreeDroid *is* Android, with a documented delta. Applications run on the same
+ART, the same framework, the same Binder, and the same kernel interfaces they run
+on with any other Android device. This is deliberate: a reimplemented runtime
+would inherit endless compatibility problems and would have to re-earn every
+security property AOSP already has.
+
+### Derivation model
+
+FreeDroid is maintained as an **overlay** on upstream AOSP, composed by `repo`
+at sync time. Upstream source is never vendored into the FreeDroid repository.
 
 ```text
-  FreeDroid Store          Third-party store         Direct APK
-  (first-party)            (F-Droid, other)          (file, browser, adb sideload)
-        │                          │                        │
-        │  each holds REQUEST_INSTALL_PACKAGES, or is the
-        │  user-selected default installer — nothing more
-        ↓                          ↓                        ↓
-  ┌───────────────────────────────────────────────────────────────┐
-  │  SourceTrustService                                           │
-  │  Records: which sources the user has trusted, when, and with  │
-  │  what scope. Supplies provenance to the confirmation UI.      │
-  │  Advisory only — it cannot grant install capability.          │
-  └───────────────────────────────────────────────────────────────┘
-        ↓                          ↓                        ↓
-  ┌───────────────────────────────────────────────────────────────┐
-  │  android.content.pm.PackageInstaller      ← AOSP, UNMODIFIED  │
-  │  Session-based install. setPackageSource() carries provenance.│
-  │  User confirmation UI. No bypass path exists, for anyone.     │
-  └───────────────────────────────────────────────────────────────┘
-        ↓
-  ┌───────────────────────────────────────────────────────────────┐
-  │  PackageManagerService                    ← AOSP, UNMODIFIED  │
-  │  APK signature scheme v2/v3/v3.1 verification · v3 rotation   │
-  │  proof-of-rotation · update signature continuity · UID        │
-  │  assignment · SELinux label assignment · permission grant     │
-  └───────────────────────────────────────────────────────────────┘
+   upstream AOSP  (android.googlesource.com, ~1000 git repositories)
+              │
+              │  repo init -b android-16.0.0_r4   [PLANNED — not yet executed]
+              │  repo sync
+              ▼
+   ┌──────────────────────────────────────────────┐
+   │  build workspace  (scratch on the build host)│
+   │                                              │
+   │   upstream AOSP  +  FreeDroid overlay        │
+   │                        ▲                     │
+   └────────────────────────┼─────────────────────┘
+                            │ .repo/local_manifests/freedroid.xml
+                            │
+                      FreeDroid repository  (this repo — the delta only)
 ```
 
-**Invariants, stated as invariants because they will be under pressure:**
+Rationale and consequences:
+[ADR-0001](decisions/ADR-0001-overlay-repository-structure.md).
 
-1. There is exactly **one** install path: `PackageInstaller` → `PackageManagerService`.
-   FreeDroid adds no second path and no "trusted source" fast path.
-2. Being a *trusted source* in FreeDroid's UI affects **what the user is told**,
-   not **what the system permits**. A fully trusted source and a completely
-   unknown one produce a bit-identical install operation. Trust changes warning
-   copy and friction, nothing else.
-3. Signature verification is never conditional on source. There is no source,
-   including the FreeDroid Store, for which validation is relaxed.
-4. No app — including FreeDroid's own Store — receives `INSTALL_PACKAGES`
-   (the privileged, no-confirmation permission) on a production build. First-party
-   apps use `REQUEST_INSTALL_PACKAGES` like everyone else. If FreeDroid's own
-   store cannot live within the model, the model is not real.
+### Baseline and update streams
+
+| | |
+| --- | --- |
+| Planned baseline | `android-16.0.0_r4` (**planned — not synced, not pinned**) |
+| Feature stream | `android-16.0.0_rN` platform tags → FreeDroid feature releases |
+| Security stream | `android16-security-release` → security-only releases, independently shippable |
+
+Two streams exist so that a security fix does not have to wait for a feature
+release. That property survives only while the FreeDroid delta stays small enough
+that a security merge does not drag feature work with it — which is why the
+customization hierarchy in ADR-0001 is enforced rather than merely recommended.
+
+---
+
+## 3. System layering
+
+```text
+┌───────────────────────────────────────────────────────────────────┐
+│  APPLICATIONS                                                     │
+│  Third-party APKs · FreeDroid first-party apps                    │
+│  Identical API surface. No privileged application class.          │
+├───────────────────────────────────────────────────────────────────┤
+│  FREEDROID UI LAYER                        [FreeDroid — Phase 4-5]│
+│  Launcher · SystemUI extensions · Settings injection              │
+│  One adaptive codebase: phone and tablet differ by window metrics │
+├───────────────────────────────────────────────────────────────────┤
+│  FREEDROID FRAMEWORK EXTENSIONS            [FreeDroid — Phase 6]  │
+│  SourceTrustService · UpdateService · FreeDroid SDK               │
+│  Additive, beside the framework — never inside it                 │
+├───────────────────────────────────────────────────────────────────┤
+│  ANDROID FRAMEWORK                         [AOSP — UNMODIFIED]    │
+│  PackageManager · ActivityManager · WindowManager · Binder ·      │
+│  PermissionController · Intents · lifecycle                       │
+├───────────────────────────────────────────────────────────────────┤
+│  ART — Android Runtime                     [AOSP — UNMODIFIED]    │
+├───────────────────────────────────────────────────────────────────┤
+│  NATIVE LAYER                              [AOSP — UNMODIFIED]    │
+│  Bionic · NDK ABI · native libraries                              │
+├───────────────────────────────────────────────────────────────────┤
+│  HAL — Hardware Abstraction Layer          [AOSP + vendor]        │
+│  AIDL/HIDL interfaces · Keystore/KeyMint · Gatekeeper             │
+├───────────────────────────────────────────────────────────────────┤
+│  LINUX KERNEL                              [AOSP/GKI + vendor]    │
+│  SELinux · seccomp · UID isolation · dm-verity · FBE              │
+├───────────────────────────────────────────────────────────────────┤
+│  VERIFIED BOOT (AVB 2.0) · bootloader · hardware root of trust    │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+The layers marked **UNMODIFIED** are where application compatibility lives.
+
+### 3.1 Android Framework — unmodified
+
+The framework provides package management, process and activity lifecycle, window
+management, permissions, and Binder IPC. FreeDroid does not modify it.
+
+| Service | FreeDroid's relationship |
+| --- | --- |
+| `PackageManagerService` | **Unmodified.** All installation, signature verification, UID assignment, and permission granting flows through it. FreeDroid adds no second path. |
+| `ActivityManagerService` | **Unmodified.** Process lifecycle and background policy are AOSP's. |
+| `WindowManagerService` | **Unmodified.** FreeDroid's adaptive UI uses public window APIs; it does not alter window management. |
+| `PermissionController` | **Unmodified.** FreeDroid surfaces and defaults Android's permission controls; it does not replace them. |
+| Binder / IPC | **Unmodified.** FreeDroid services are ordinary Binder services with permission-guarded interfaces. |
+
+**Design rule:** FreeDroid features sit *beside* the application runtime path,
+never inside it. A feature requiring a check inserted into
+`PackageManagerService` is a categorically more expensive feature than one that
+adds a service alongside it, and that cost belongs in the design discussion, not
+the code review.
+
+### 3.2 ART — unmodified
+
+The Android Runtime executes application bytecode.
+
+- No changes to ART, the DEX format, the bytecode contract, or the verifier.
+- No alternate or additional runtime.
+- Applications are not recompiled, repackaged, or transformed for FreeDroid.
+
+ART is also a security boundary — bytecode verification, W^X enforcement, and JIT
+hardening all live here. Modifying it would mean re-validating those properties
+with no corresponding benefit.
+
+### 3.3 Linux kernel
+
+The kernel enforces the security boundaries the rest of the model depends on:
+SELinux, seccomp-bpf, UID/GID isolation, dm-verity, and File-Based Encryption.
+
+| Aspect | Approach |
+| --- | --- |
+| Source | AOSP common kernel / GKI where available |
+| Modification | **None planned.** A kernel change requires security review; kernel divergence is the most expensive kind. |
+| GKI | Strongly preferred for physical devices — sharply reduces kernel maintenance |
+| Vendor modules | Device-specific, supplied per target, and frequently the weakest link in the system |
+| Security updates | Tracked with the platform security stream |
+
+### 3.4 HAL — Hardware Abstraction Layer
+
+The HAL is the boundary between the framework and device hardware. FreeDroid
+consumes AIDL/HIDL HAL interfaces; it does not redefine them.
+
+Security-relevant HALs:
+
+| HAL | Provides | Dependency |
+| --- | --- | --- |
+| KeyMint / Keystore | Hardware-backed key storage and attestation | TEE, or StrongBox where present |
+| Gatekeeper / Weaver | Credential verification, brute-force rate limiting | TEE |
+| `boot` | Verified Boot state, rollback index | Bootloader |
+| `secure_element` | Hardware-isolated secrets | Device-dependent |
+
+**Every hardware-backed security property in this architecture depends on the
+device providing it.** Cuttlefish emulates some and provides no real hardware
+guarantee for any. This distinction is tracked per mechanism in
+[`SECURITY_MODEL.md`](../security/SECURITY_MODEL.md).
+
+---
+
+## 4. FreeDroid components
+
+All are **planned**. None exist.
+
+### 4.1 FreeDroid framework extensions — Phase 6
+
+Additive system services and an SDK, sitting beside the Android framework.
+
+| Component | Responsibility | Exposure to ordinary apps |
+| --- | --- | --- |
+| `SourceTrustService` | Records per-source user trust decisions; supplies provenance to the installer UI | **None.** `signature`-guarded. Cannot install anything. |
+| `UpdateService` | Update policy, staging, security-patch-level reporting | **None.** No app-reachable install path. |
+| FreeDroid SDK | Optional APIs for FreeDroid-aware apps | Separate library, **never merged into `framework.jar`** |
+
+Constraints:
+
+- Each service runs in its own SELinux domain with minimal, reviewed policy.
+- Each exposes a narrow, permission-guarded interface, or none.
+- **No universal privileged API.** There is no FreeDroid interface through which
+  an ordinary application performs a privileged operation on its own behalf.
+- The SDK is a separate library so that an app ignoring it sees stock Android,
+  and so that FreeDroid adds no surface to the core framework.
+
+Every new system service is a permanent addition to the attack surface. The
+service count is a number to keep low, not a feature to grow.
+
+### 4.2 FreeDroid SystemUI — Phase 5
+
+Notification shade, quick settings, lock screen, status bar, navigation.
+
+**Overlay-first.** RROs and configuration wherever they suffice; SystemUI source
+patches only where a component genuinely cannot be injected, each justified
+individually. A growing patch count in this phase is the early signal that the
+approach is drifting.
+
+Adaptive by construction: status bar, shade, and navigation adapt to window size
+class, not to a device category.
+
+### 4.3 FreeDroid Launcher — Phase 4
+
+Home screen, app drawer, search, widgets. Replaces Launcher3 via
+`PRODUCT_PACKAGES` — a product configuration change, not a source modification.
+
+Adaptive from the first commit: single-pane on COMPACT windows, multi-pane with a
+navigation rail on EXPANDED. No device-category branching.
+
+### 4.4 FreeDroid Store — Phase 7
+
+The first-party application source. Architecturally, **an ordinary application**.
+
+- Holds `REQUEST_INSTALL_PACKAGES`, like any other installer.
+- **Never holds `INSTALL_PACKAGES`** — the privileged, no-confirmation permission.
+- Has no verification shortcut, no signature exemption, no privileged install path.
+- Is uninstallable or replaceable by the user.
+
+This is the load-bearing decision of the whole design. If FreeDroid's own store
+needed privileges a third-party store cannot have, the multi-source promise would
+be decorative and the no-lock-in goal would be true only on paper. The cost is
+real — the Store will feel marginally less seamless than a privileged store — and
+it is the correct cost to pay.
+
+### 4.5 Application distribution architecture — Phase 7
+
+```text
+  FreeDroid Store        Third-party store        Direct APK
+  (first-party)          (F-Droid, other)         (file, browser, sideload)
+        │                       │                       │
+        │   each holds REQUEST_INSTALL_PACKAGES, or is the user-selected
+        │   default installer. Nothing more. No source is privileged.
+        ▼                       ▼                       ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  SourceTrustService                      [FreeDroid, Ph. 6]  │
+  │  Records which sources the user trusts. Supplies provenance  │
+  │  to the confirmation UI. ADVISORY ONLY — it cannot grant     │
+  │  install capability to anything.                             │
+  └──────────────────────────────────────────────────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  PackageInstaller                        [AOSP, UNMODIFIED]  │
+  │  Session-based install · setPackageSource() carries          │
+  │  provenance · user confirmation · no bypass path for anyone  │
+  └──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  PackageManagerService                   [AOSP, UNMODIFIED]  │
+  │  APK signature scheme v2/v3/v3.1 · v3 rotation proof ·       │
+  │  update signature continuity · UID assignment · SELinux      │
+  │  label assignment · permission grant                         │
+  └──────────────────────────────────────────────────────────────┘
+```
+
+**Invariants** — stated as invariants because they will come under pressure:
+
+1. Exactly **one** install path: `PackageInstaller` → `PackageManagerService`.
+2. Source trust changes **what the user is told**, never **what the system
+   permits**. A fully trusted source and a completely unknown one produce a
+   bit-identical install operation.
+3. Signature verification is never conditional on source — including the
+   FreeDroid Store.
+4. No application holds `INSTALL_PACKAGES` on a production build.
 
 **On scanning:** FreeDroid may surface signals — signature novelty, requested
-permission set, source reputation, reproducible-build attestation where a
-repository provides it. None of these establish that an application is safe, and
-the UI must not imply that they do. Malware detection by static inspection is
-undecidable in general and routinely evaded in practice. The honest claim is
-"we found nothing known-bad," and that is the claim the UI will make.
+permission breadth, reproducible-build attestation where a repository publishes
+it. None establishes that an application is safe, and the UI must not imply
+otherwise. The honest claim is "nothing known-bad found."
+
+### 4.6 OTA infrastructure — Phase 8
+
+```text
+  FreeDroid build  →  offline/HSM signing  →  update server
+                                                    │
+                                              HTTPS (transport only —
+                                              confers no authority)
+                                                    ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  DEVICE                                                      │
+  │  1. Signature verified against a public key baked into the   │
+  │     read-only, Verified-Boot-protected system image          │
+  │  2. Rollback index checked — downgrade refused               │
+  │  3. Applied to the inactive slot (Virtual A/B)               │
+  │  4. dm-verity verifies the new slot at boot                  │
+  │  5. Failure → automatic fallback to the previous slot        │
+  └──────────────────────────────────────────────────────────────┘
+```
+
+Design commitments:
+
+- **Transport is never trust.** An update from the official URL with a bad
+  signature is rejected exactly as one from anywhere else.
+- Signing keys never enter the repository. Release signing happens on an HSM or
+  air-gapped host with multi-party authorization.
+- Security-only updates ship independently of feature releases.
+- **APEX/Mainline modules are delivered by FreeDroid itself.** Without Google
+  Play, a device receives no Play system updates, and a significant share of
+  monthly security fixes lands in APEX modules. This is a hard requirement of the
+  update system — a Google-free device that skips it silently falls behind on
+  fixes it appears to have.
+
+---
 
 ## 5. Phone and tablet: one codebase
 
-There is one build, one set of apps, and one system image per architecture.
-Form-factor differences are expressed through Android's existing mechanisms:
+### 5.1 Strategy
 
-| Mechanism | Used for |
+**One codebase. One build per architecture. One set of applications.**
+
+Form factor is a runtime property, not a build-time identity. Two codebases
+diverge, and divergence means a security fix applied to one and forgotten on the
+other — a security failure, not merely a maintenance cost.
+
+| Mechanism | Purpose |
 | --- | --- |
-| Resource qualifiers (`sw600dp`, `w840dp`, `-land`, `-port`) | Layout selection |
-| `WindowSizeClass` / `WindowMetricsCalculator` | Runtime layout decisions — **not** `isTablet()` style screen-size guesses |
-| Activity embedding (`SplitController`) | Two-pane list/detail on large screens |
+| Resource qualifiers (`sw600dp`, `w840dp`, `-land`, `-port`) | Layout and resource selection |
+| `WindowSizeClass` (COMPACT / MEDIUM / EXPANDED) | Runtime layout decisions |
+| `WindowMetricsCalculator` | Current **window** bounds — not display bounds |
+| Activity embedding (`SplitController`) | Two-pane list/detail on large windows |
 | Multi-window, split-screen, freeform | Supported, not special-cased |
-| `PRODUCT_CHARACTERISTICS` | Only where hardware truly differs (e.g. telephony present/absent) |
+| `PRODUCT_CHARACTERISTICS` | Only where hardware genuinely differs |
 
-Hard rule: **no `if (tablet)` branching in FreeDroid UI code.** A device is a set
-of window metrics and hardware features, not a category. Foldables — which change
-category at runtime — make this a correctness requirement rather than a style
-preference. Android 16 additionally ignores orientation and resizability
-restrictions on large screens for apps targeting SDK 36, so layouts must handle
-arbitrary window sizes regardless.
+### 5.2 Phone architecture
 
-## 6. Google services
+| Aspect | Approach |
+| --- | --- |
+| Window class | Typically COMPACT; MEDIUM in landscape on larger phones |
+| Navigation | Bottom navigation or gesture navigation |
+| Layout | Single pane; detail views as full-screen destinations |
+| Hardware | Telephony, SMS, cellular data, GPS, NFC typically present |
+| Foldables | Window class changes at runtime across the hinge — state must survive |
 
-AOSP contains no Google Play Store and no Google Play Services. FreeDroid does not
-add them.
+### 5.3 Tablet architecture
 
-- **Default configuration is Google-free** and must be fully functional: apps
-  install, update, and run; notifications, location, and networking work.
-- Apps depending on proprietary Google APIs (FCM push, Play Billing, Play
-  Integrity, Maps SDK, Play Services location) will degrade or fail. This is a
-  property of those apps, not a FreeDroid defect. The Store must **label such
-  apps clearly** rather than let users discover it after installation.
-- A separately-maintained configuration may support Google services where
-  licensing, certification, and technical requirements permit. It is not the
-  default and is not required for any FreeDroid function.
-- No proprietary Google component is copied or redistributed from this project.
+| Aspect | Approach |
+| --- | --- |
+| Window class | Typically EXPANDED; MEDIUM in split-screen |
+| Navigation | Navigation rail or drawer |
+| Layout | Two-pane list/detail via activity embedding; three-pane where useful |
+| Hardware | Telephony often **absent** — features must degrade cleanly, not break |
+| External displays | Multi-display and freeform windows supported |
 
-**Consequence that is easy to miss:** without Google Play, FreeDroid does not
-receive Mainline (APEX) module updates through Play system updates. Those modules
-carry a significant share of monthly security fixes. FreeDroid must therefore
-deliver APEX updates itself — either as staged APEX installs or rolled into OTAs.
-This is a hard requirement of the update system, not an optimization. See
-[`SECURITY_MODEL.md`](../security/SECURITY_MODEL.md) §T4 and the OTA phase in the
-roadmap.
+### 5.4 The rule
 
-## 7. Build variants
+**Prohibited in FreeDroid UI code:**
 
-| Variant | `ro.debuggable` | ADB default | SELinux | Verified Boot | Signing key |
-| --- | --- | --- | --- | --- | --- |
-| `eng` | 1 | on | **enforcing** | test keys | test |
-| `userdebug` | 1 | on, authorized | **enforcing** | test keys | test |
-| `user` | **0** | **off** | **enforcing** | **release AVB** | **release (offline/HSM)** |
+```kotlin
+if (isTablet()) { … }                                       // device category
+if (resources.configuration.smallestScreenWidthDp >= 600)   // device proxy
+if (display.width > 1200) { … }                             // display, not window
+```
 
-Two properties hold across every variant, including `eng`:
+**Required:**
 
-- SELinux is enforcing. There is no permissive FreeDroid build.
-- Package signature verification is enabled. There is no build in which it is not.
+```kotlin
+when (WindowSizeClass.compute(windowMetrics).windowWidthSizeClass) {
+    WindowWidthSizeClass.COMPACT  -> singlePane()
+    WindowWidthSizeClass.MEDIUM,
+    WindowWidthSizeClass.EXPANDED -> twoPane()
+}
+```
 
-Everything else that differs between variants is gated by an automated release
-check that fails the build if a debug setting appears in a `user` image. The gate
-exists because "we'll remember to turn it off" is how debug settings ship. See
-[`TESTING.md`](../development/TESTING.md) §4.
+The window is not the display. A tablet in split-screen hands an app a compact
+window; a foldable changes window size mid-session. Branching on device category
+is wrong in both cases — a correctness requirement, not a style preference.
+
+Android 16 additionally ignores orientation and resizability restrictions on
+large screens for apps targeting SDK 36. FreeDroid's applications must handle
+arbitrary window sizes, and FreeDroid must not reintroduce restrictions that AOSP
+removed — doing so would make FreeDroid *less* compatible than stock.
+
+---
+
+## 6. Google Play and GMS
+
+> **AOSP does not include the Google Play Store or Google Mobile Services.**
+> They are proprietary, separately licensed, and not part of the open-source
+> platform. FreeDroid does not add them, and does not bundle unofficial
+> reimplementations or redistributions of them.
+
+FreeDroid defines two conceptual configurations:
+
+```text
+FreeDroid Open                        FreeDroid GMS
+├── AOSP                              ├── AOSP
+├── FreeDroid components              ├── FreeDroid components
+├── FreeDroid Store                   ├── FreeDroid Store
+├── direct APK installation           ├── direct APK installation
+└── third-party app stores            ├── third-party app stores
+                                      ├── Google Play Store          [licensed]
+   DEFAULT CONFIGURATION              ├── Google Play Services       [licensed]
+   Fully functional                   └── other Google components    [licensed]
+   No Google dependency
+                                         ASPIRATIONAL — requires CTS/CDD
+                                         compliance and a Google licensing
+                                         and certification agreement.
+                                         NOT GUARANTEED.
+```
+
+### FreeDroid Open — the default
+
+The default configuration and the one that must always work. Applications
+install, update, and run; notifications, location, and networking function
+without any Google component.
+
+### FreeDroid GMS — aspirational
+
+A configuration where Google components may be present **only** where licensing,
+certification, and technical requirements permit.
+
+**Explicit constraints:**
+
+- Google components are **not** included in this repository.
+- Proprietary Google components are **not** copied or redistributed.
+- Unofficial Google packages and reimplementations are **not** bundled.
+- **GMS approval is not guaranteed.** It requires a commercial agreement with
+  Google, on terms Google sets, and may never be obtained. Nothing in this
+  project should be planned on the assumption that it will be.
+
+### Consequences for FreeDroid Open
+
+Applications depending on proprietary Google APIs will degrade or fail:
+
+| Dependency | Effect |
+| --- | --- |
+| FCM push | No push notifications — often a *silent* failure, which is worse than a loud one |
+| Play Billing | In-app purchases fail |
+| Play Integrity / SafetyNet | Attestation fails; some banking and media apps refuse to run |
+| Maps SDK | Map surfaces fail to load |
+| Play Services location | Falls back to AOSP `LocationManager` where the app supports it |
+
+Obligations this creates: the Store **labels** such applications before
+installation, and FreeDroid does not claim they work. Discovering it after
+installation is a user-hostile failure.
+
+Also: no Play means no Play system updates, which makes FreeDroid-delivered APEX
+updates mandatory (§4.6).
+
+### Future milestone
+
+```text
+Android compatibility → CTS/CDD compliance → GMS licensing/certification process
+```
+
+Sequential, and each step is a prerequisite for the next. FreeDroid is at step
+zero: compatibility is a design commitment that has not been tested. CTS/CDD
+compliance is a Phase 9–12 objective. GMS licensing is a commercial process that
+follows demonstrated compliance and may not be available to this project at all.
+
+---
+
+## 7. Third-party applications
+
+FreeDroid is intentionally designed to allow:
+
+```text
+FreeDroid Store          first-party, verified applications and updates
+Third-party stores       F-Droid-style repositories and other stores
+Direct APK installation  user-approved, from a file or a browser
+```
+
+**All applications, from all sources, remain subject to:**
+
+- Android package management (`PackageInstaller` → `PackageManagerService`)
+- Package and signature validation (v2/v3/v3.1, v3 rotation, update continuity)
+- The Android permission model
+- The application sandbox (per-app UID, private data directory)
+- SELinux (`untrusted_app` domain)
+- Every other platform security control
+
+**Direct APK installation bypasses none of these.** "Direct" describes where the
+file came from, not how it is installed.
+
+**No privileged universal APK installation API will be created.** No FreeDroid
+interface allows an application to install packages without going through
+`PackageInstaller` and its user confirmation. Such an API would be the single
+most valuable target on the device — every malicious application would seek it —
+and it would make the sandbox negotiable.
+
+---
 
 ## 8. What FreeDroid deliberately does not do
 
-- **No root access for applications.** No `su`, no root helper, no "developer
-  mode" that grants it.
-- **No universal privileged API.** There is no FreeDroid interface through which
-  an ordinary app performs a privileged operation on its own behalf. Each
-  FreeDroid service exposes a narrow, permission-guarded interface or none.
+- **No root for applications.** No `su`, no root helper, no developer toggle
+  granting it, in any build variant.
+- **No universal privileged API.**
 - **No permission model replacement.** Android's runtime permissions, one-time
-  grants, unused-app hibernation, Privacy Dashboard, camera/mic indicators and
-  global toggles, and Photo Picker already implement what requirement
-  "application security" asks for. FreeDroid surfaces and defaults these better;
-  it does not reimplement them. A parallel permission system would be a second
-  enforcement point that can disagree with the first — which is a vulnerability
-  class, not a feature.
+  grants, hibernation, Privacy Dashboard, camera/mic indicators and global
+  toggles, and Photo Picker already implement what is needed. A parallel
+  permission system would be a second enforcement point that can disagree with
+  the first — a vulnerability class, not a feature.
 - **No modified ART or bytecode contract.**
-- **No system partition writable at runtime.** `/system`, `/product`, `/vendor`
-  are read-only and dm-verity protected.
+- **No writable system partitions.** `/system`, `/product`, `/vendor` read-only
+  and dm-verity protected.
+- **No attestation spoofing**, even where it would improve app compatibility.
+
+---
 
 ## 9. Open questions
 
-Recorded rather than resolved, because resolving them now would be guessing:
+Recorded rather than resolved; resolving them now would be guessing.
 
-1. **Update cadence.** Monthly SPL merges from `android16-security-release` are
-   the intent. Achievable cadence is unknown until we measure merge and test cost
-   on a real baseline.
-2. **Reproducible builds.** Highly desirable for supply-chain assurance
-   (`SECURITY_MODEL.md` §T10). AOSP is not fully reproducible out of the box.
-   Scope to be assessed after Phase 1.
-3. **Repository format for third-party sources.** Whether to consume the F-Droid
-   index format directly or define a FreeDroid index with a compatibility shim.
-   Decide in Phase 7 with real repositories in hand.
-4. **APEX update delivery** without Play system updates — staged APEX installs
-   versus OTA-bundled. Decide in Phase 8.
-5. **Reference hardware.** Phase 10. Selection criteria: unlockable *and
-   re-lockable* bootloader with custom AVB key support, mainline-ish kernel,
-   available vendor blobs with redistribution rights. Re-lockability is
-   non-negotiable — without it, Verified Boot on the shipped device is theatre.
+1. **Update cadence.** Monthly SPL merges are the intent. Achievable cadence is
+   unknown until merge and test cost are measured on a real baseline.
+2. **Reproducible builds.** Highly desirable for supply-chain assurance. AOSP is
+   not reproducible out of the box. Scope after Phase 1.
+3. **Repository index format.** Consume the F-Droid index directly, or define a
+   FreeDroid index with a compatibility shim? Decide in Phase 7 with real
+   repositories in hand.
+4. **APEX delivery** without Play system updates — staged installs or
+   OTA-bundled. Decide in Phase 8.
+5. **Reference hardware.** Not selected. Mandatory criterion: a bootloader that
+   can be **re-locked with a custom AVB key**. See
+   [`DEVICE_SUPPORT.md`](../development/DEVICE_SUPPORT.md) §6.
+6. **FreeDroid GMS** — whether to pursue it at all, given the commercial and
+   philosophical cost.

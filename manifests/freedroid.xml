@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  FreeDroid local manifest — PLACEHOLDER / DESIGN DOCUMENT
+  ============================================================================
+
+  STATUS: This file is a DESIGN PLACEHOLDER. It is NOT a working manifest.
+
+  NO AOSP SOURCE TREE HAS BEEN SYNCED. NO AOSP REVISION HAS BEEN PINNED.
+  NO PROJECT BELOW HAS BEEN VERIFIED TO EXIST OR TO BUILD.
+
+  Every <project> element is commented out deliberately. Uncommenting one
+  before the corresponding FreeDroid component actually exists would produce
+  a manifest that fails `repo sync` with a confusing error. Components are
+  added here as their roadmap phase creates them, not in advance.
+
+  ===========================================================================
+  WHAT THIS FILE IS
+  ===========================================================================
+  A `repo` LOCAL MANIFEST. It does not replace the upstream AOSP manifest; it
+  ADDS FreeDroid projects alongside it. See:
+    docs/architecture/decisions/ADR-0001-overlay-repository-structure.md
+
+  At sync time on the build host, this file lives at:
+    <workspace>/.repo/local_manifests/freedroid.xml
+
+  and `repo` composes upstream AOSP and FreeDroid into one build tree:
+
+    <workspace>/
+    ├── .repo/                     repo metadata + this local manifest
+    ├── frameworks/  system/  …    upstream AOSP  (NOT in the FreeDroid repo)
+    ├── device/freedroid/          from the FreeDroid repo
+    └── vendor/freedroid/          from the FreeDroid repo
+
+  The workspace is scratch space on the build host. It is never committed.
+
+  ===========================================================================
+  TODO — PINNING THE AOSP BASELINE
+  ===========================================================================
+  TODO(phase-1): Pin the AOSP baseline on the dedicated build host.
+
+  The upstream revision is NOT pinned in this file. It is selected by the
+  `repo init` invocation on the build host:
+
+      repo init -u https://android.googlesource.com/platform/manifest \
+                -b android-16.0.0_r4
+
+  PLANNED BASELINE:  android-16.0.0_r4
+  ACTUAL STATE:      NOT SYNCED, NOT PINNED, NOT VERIFIED
+
+  `android-16.0.0_r4` is the ARCHITECTURAL RECOMMENDATION recorded in
+  docs/development/ENVIRONMENT_AUDIT.md §6. The tag was confirmed to EXIST
+  upstream by a read-only `git ls-remote` query on 2026-09-16. Nothing has
+  been fetched from it. It has not been built. It may be superseded by a
+  later tag before Phase 1 begins — re-check before pinning.
+
+  TODO(phase-1): After the first successful sync, record the exact revisions:
+
+      repo manifest -r -o manifest-<build-id>.xml
+
+  That output pins every project to a SHA and is what makes a build
+  reproducible. Archive it with the build artifacts. DO NOT hand-write SHAs
+  into this file — a fabricated or stale SHA is worse than no SHA, because it
+  looks authoritative.
+
+  ===========================================================================
+  REMOTE CONFIGURATION
+  ===========================================================================
+  TODO(phase-1): Confirm the fetch URL and the branch each project tracks
+  before enabling any <project> below.
+-->
+<manifest>
+
+  <!--
+    FreeDroid remote.
+
+    TODO(phase-1): Verify this URL resolves on the build host and that the
+    build host has credentials for it if the repository is private.
+  -->
+  <remote name="freedroid"
+          fetch="https://github.com/vihaanshah191/"
+          review="" />
+
+  <!--
+    ==========================================================================
+    FreeDroid projects — ALL DISABLED UNTIL THEIR PHASE CREATES THEM
+    ==========================================================================
+
+    Each entry below is a PLANNED path, not an existing project. The "Phase"
+    note is the roadmap phase that creates it. See docs/roadmap/ROADMAP.md.
+
+    A project is uncommented only when:
+      1. The component exists and builds, and
+      2. Its own git repository exists at the stated remote, and
+      3. Its Android.bp / product configuration has been reviewed.
+  -->
+
+  <!-- Phase 4 — device configuration for the Cuttlefish virtual targets.
+  <project path="device/freedroid"
+           name="freedroid-device"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 4 — product makefiles, RROs, branding, SELinux policy.
+       NOTE: vendor/freedroid contains NO proprietary vendor blobs and no
+       signing keys. See docs/security/SECURITY_MODEL.md §9.
+  <project path="vendor/freedroid"
+           name="freedroid-vendor"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 4 — FreeDroidLauncher. Adaptive phone/tablet from first commit.
+  <project path="packages/apps/FreeDroidLauncher"
+           name="freedroid-launcher"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 5 — SystemUI extensions. Overlay-first; see ADR-0001 hierarchy.
+  <project path="packages/apps/FreeDroidSystemUI"
+           name="freedroid-systemui"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 5 — Settings injection fragments (NOT a Settings fork).
+  <project path="packages/apps/FreeDroidSettings"
+           name="freedroid-settings"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 6 — FreeDroid SDK / framework extensions.
+       NOTE: ships as a SEPARATE library. It is NOT merged into framework.jar.
+       See docs/compatibility/ANDROID_COMPATIBILITY.md §3.
+  <project path="frameworks/freedroid"
+           name="freedroid-framework"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 6 — FreeDroid system services (SourceTrustService, UpdateService).
+       Each gets its own SELinux domain. No universal privileged API.
+  <project path="frameworks/freedroid-services"
+           name="freedroid-services"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 7 — FreeDroid Store client.
+       NOTE: holds REQUEST_INSTALL_PACKAGES only. NEVER INSTALL_PACKAGES.
+       See docs/security/SECURITY_MODEL.md §7.
+  <project path="packages/apps/FreeDroidStore"
+           name="freedroid-store"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!-- Phase 8 — OTA client / update_engine integration.
+  <project path="packages/apps/FreeDroidUpdater"
+           name="freedroid-updater"
+           remote="freedroid"
+           revision="main" />
+  -->
+
+  <!--
+    ==========================================================================
+    <remove-project> — INTENTIONALLY EMPTY
+    ==========================================================================
+
+    A <remove-project> entry means an upstream AOSP project has been FORKED.
+    Each fork is permanent divergence and a permanent maintenance liability.
+
+    As of Phase 0 there are ZERO forks, and keeping that number at zero is an
+    explicit project goal (ADR-0001). Adding an entry here requires the
+    compatibility analysis, security review, and lead sign-off defined in
+    docs/compatibility/ANDROID_COMPATIBILITY.md §6.
+  -->
+
+</manifest>

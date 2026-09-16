@@ -49,7 +49,7 @@ FreeDroid/
 ```text
 aosp-workspace/
 ├── .repo/
-│   ├── manifests/                     # AOSP manifest @ android-16.0.0_r4
+│   ├── manifests/                     # AOSP manifest @ android-16.0.0_r4 [PLANNED]
 │   └── local_manifests/
 │       └── freedroid.xml              # symlink/clone from manifests/ above
 ├── build/  frameworks/  system/  packages/  art/  bionic/    # upstream AOSP
@@ -160,6 +160,7 @@ cannot be audited after the fact.
 
 ```text
 android-16.0.0_r4 ──────────────────────► FreeDroid feature releases
+  [PLANNED - not synced]
   (platform tags)                          full test pass, planned
 
 android16-security-release ─────────────► FreeDroid security-only releases
@@ -175,8 +176,35 @@ enforced rather than merely recommended.
 
 ## 6. Directory creation policy
 
-Directories in §1 are created **as their phase begins**, not now. An empty
-directory tree with placeholder files is inventory, not architecture: it implies
-work that does not exist and goes stale before it is used.
+The scaffold in §1 **exists as of Phase 0** — every directory is present with a
+`.gitkeep` and, where useful, a `README.md` stating what belongs there and which
+phase creates it.
 
-Current state (Phase 0): `docs/`, `README.md`. Everything else is planned.
+This supersedes an earlier policy in this document that directories should be
+created only as their phase begins. The concern behind that policy was real: an
+empty tree implies work that does not exist. The scaffold addresses it directly
+instead — each placeholder directory's `README.md` states plainly that it is
+empty, names the phase that fills it, and records the constraints that apply
+there (for example, that `freedroid/apps/store/` will hold an app with
+`REQUEST_INSTALL_PACKAGES` and never `INSTALL_PACKAGES`).
+
+That makes the scaffold a statement of intent with its constraints attached,
+rather than inventory. The rule that remains in force: **a placeholder directory
+must say it is a placeholder.** A `.gitkeep` alone, with no README, is inventory.
+
+### Current state — Phase 0
+
+| Path | Contents | Status |
+| --- | --- | --- |
+| `docs/` | Architecture, security, compatibility, development, roadmap | ✅ Written |
+| `manifests/freedroid.xml` | Local manifest | ⚠️ **Placeholder — no projects active, no revision pinned** |
+| `scripts/validate-structure.sh` | Structure validation | ✅ Implemented |
+| `freedroid/*` | FreeDroid components | ⬜ Empty — Phases 4–8 |
+| `device/freedroid/` | Device configuration | ⬜ Empty — Phase 4 |
+| `vendor/freedroid/*` | Product config, RROs, sepolicy | ⬜ Empty — Phases 4, 6 |
+| `patches/` | Upstream patches | ⬜ **Does not exist, and should stay that way as long as possible** |
+
+`patches/` is deliberately absent. It gets created by the first change that
+genuinely cannot be expressed as an overlay, a product config, or a new module —
+and that moment should be a considered decision, not a directory that was sitting
+there inviting use.
