@@ -183,6 +183,64 @@ present a broken dialer (DEV-11).
 
 ---
 
+## 6a. FreeDroid Launcher — LNC
+
+The launcher is developed as a standalone Gradle project
+(`freedroid/launcher/`). Its pure-Kotlin policy module runs on any JDK, so a
+large part of it is testable **now**, with no AOSP tree and no device.
+
+### Executed and passing
+
+| ID | Suite | Tests | Covers | Status |
+| --- | --- | --- | --- | --- |
+| LNC-01 | `AppSearcherTest` | 18 | Match qualities, ranking, determinism, empty states, large-catalogue speed | ✅ passing |
+| LNC-02 | `AppCatalogTest` | 16 | Package added / removed / updated / unavailable, immutability, multi-profile | ✅ passing |
+| LNC-03 | `LayoutPolicyTest` | 14 | Per-geometry layouts, ~46,000-point sweep, monotonicity, layout invariants | ✅ passing |
+| LNC-04 | `AppSorterTest` | 7 | Ordering, accents, stability, totality | ✅ passing |
+| LNC-05 | `DrawerBreakpointTest` | 7 | Exact window breakpoints; drawer columns change at exactly two widths; independent of height | ✅ passing |
+| LNC-06 | `TextNormalizerTest` | 7 | Case, accents, locale-invariance, word separators | ✅ passing |
+| LNC-07 | `LaunchRecoveryTest` | 6 | Every launch-failure path; none maps to silence | ✅ passing |
+| LNC-08 | `WindowSizeClassTest` | 5 | Breakpoint boundaries, input validation | ✅ passing |
+| LNC-09 | `verifyNoAndroidDependencies` | — | `:core` cannot acquire an Android dependency | ✅ passing, negative-tested |
+| LNC-10 | `check-launcher-constraints.sh` | 10 | No device-category branching, no prohibited permissions, no root/reflection, no signing config, module boundaries, pinned versions | ✅ passing, negative-tested |
+| LNC-11 | Gradle configuration | — | `:app` and `:uitest` configure cleanly against an SDK path | ✅ passing |
+
+**Total: 80 unit tests passing.**
+
+### Blocked — no Android SDK in the development environment
+
+These are **written but never executed**. They are not evidence of anything and
+must not be reported as passing.
+
+| ID | Suite | Blocked by |
+| --- | --- | --- |
+| LNC-12 | `:app` Kotlin compilation | No Android SDK |
+| LNC-13 | `:app` JVM unit tests | No Android SDK |
+| LNC-14 | Manifest merge and lint | No Android SDK |
+| LNC-15 | `:uitest` instrumented UI tests | No Android SDK **and** no `/dev/kvm` for an emulator |
+| LNC-16 | Adaptive reflow on live window resize | Needs a device or emulator |
+| LNC-17 | Accessibility tree assertions | Needs a device or emulator |
+| LNC-18 | Icon-loading performance under scroll | Needs a device |
+
+LNC-15 through LNC-18 are the tests that genuinely require a device. The layout,
+search and catalogue decisions they would exercise are already covered by
+LNC-01…LNC-08 as pure functions, so the device tests add reflow, rendering and
+accessibility-tree coverage rather than re-testing policy.
+
+### What has NOT been demonstrated
+
+Stated plainly, because a passing unit-test count invites over-reading:
+
+- The launcher has never been built, installed, or launched.
+- No UI has been rendered.
+- No application has been discovered on a real device.
+- No application has been launched.
+- No wallpaper has been displayed.
+- No accessibility behaviour has been observed by a screen reader.
+- The `:app` sources may not even compile.
+
+---
+
 ## 7. Execution matrix
 
 | Test class | Every commit | Nightly | Pre-release | Phase gate |
@@ -192,6 +250,7 @@ present a broken dialer (DEV-11).
 | **SEC** | **✅ always** | ✅ | ✅ | ✅ |
 | DEV | — | — | ✅ | ✅ (Phase 10+) |
 | CTS | — | ✅ | ✅ | ✅ |
+| **LNC** (launcher) | ✅ `:core` | ✅ | ✅ | ✅ (Phase 4) |
 
 Security tests run on **every** build. They are the cheapest place to catch a
 regression that would otherwise ship, and the tests most likely to be skipped

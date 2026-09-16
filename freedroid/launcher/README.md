@@ -1,57 +1,28 @@
 # FreeDroid Launcher
 
-The FreeDroid home screen, developed as a standalone Gradle project so it can be
-built and tested without an AOSP tree. Phase 4 folds it into the platform build
-via `PRODUCT_PACKAGES`, replacing Launcher3.
+The FreeDroid home screen, developed as a standalone Gradle project so the logic
+can be built and tested without an AOSP tree. Phase 4 folds it into the platform
+build via `PRODUCT_PACKAGES`, replacing Launcher3.
 
-**Status: skeleton.** The layout policy is complete and tested. The Android
-application module is authored but has never been compiled or run.
+**Status:** the adaptive policy, search, sorting and catalogue are implemented
+and tested — **80 passing tests**. The Android application is written but **has
+never been compiled or run**: the Android SDK is absent from this development
+environment.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ---
 
 ## Modules
 
-| Module | Kind | Builds in this container? |
-| --- | --- | --- |
-| `:core` | Pure Kotlin/JVM | ✅ **Yes** — builds and tests today |
-| `:app` | Android application | ❌ No — needs the Android SDK |
+| Gradle | Role | Kind | Builds here? |
+| --- | --- | --- | --- |
+| `:core` | launcher-core | Pure Kotlin/JVM | ✅ **Yes** — 80 tests passing |
+| `:app` | launcher-app | Android application | ❌ Needs the Android SDK |
+| `:uitest` | launcher-test | Instrumented UI tests | ❌ Needs SDK **and** a device |
 
-`settings.gradle.kts` includes `:app` only when an Android SDK is present, so
-`gradle build` works here and simply builds `:core`. Without that, every command
-would fail with an SDK error rather than an honest "not available here".
-
-### Why the split
-
-`:core` holds the adaptive layout policy and has **no Android dependency**. That
-is the point, not an accident of packaging.
-
-`docs/architecture/OVERVIEW.md` §5.4 prohibits branching on device category —
-`isTablet()`, `smallestScreenWidthDp`, display size. In `:core` that rule is not
-a convention anyone has to remember: the Android API surface is absent from the
-classpath, so device-category APIs are **unreachable**. The architectural rule is
-enforced by the dependency graph.
-
-A Gradle task, `verifyNoAndroidDependencies`, keeps it that way and runs as part
-of `check`. It has been tested against a deliberately added Android dependency
-and correctly failed the build.
-
-The second benefit is practical: the policy is a pure function, so every form
-factor FreeDroid will ever run on is testable without a device — which matters
-when the environment has no emulator.
-
-```text
-  Android                          │  Platform-agnostic
-  ─────────────────────────────────┼────────────────────────────────
-  LauncherActivity                 │
-        │                          │
-  WindowGeometryAdapter ───────────┼──► WindowGeometry (width/height dp)
-  (the only boundary)              │          │
-                                   │          ▼
-                                   │    LayoutPolicy.decide()
-                                   │          │
-                                   │          ▼
-                                   │    LauncherLayout
-```
+`:app` and `:uitest` are included only when an Android SDK is present, so
+`gradle build` works here and builds `:core` alone.
 
 ---
 
@@ -60,94 +31,112 @@ when the environment has no emulator.
 ```bash
 cd freedroid/launcher
 
-gradle :core:test     # run the layout policy tests
+gradle :core:test     # 80 unit tests
 gradle :core:check    # tests + the no-Android-dependency guard
 gradle build          # :core only, unless ANDROID_HOME is set
+
+# From the repository root — structural + security constraints, no SDK needed
+./scripts/check-launcher-constraints.sh
 ```
 
-Requires JDK 17+ and network access to Maven Central and Google Maven. Verified
-on Gradle 8.14.3 / OpenJDK 21.
+Verified on Gradle 8.14.3 / OpenJDK 21. Requires Maven Central and Google Maven.
 
 To build `:app`, set `ANDROID_HOME` (or `sdk.dir` in `local.properties`) on a
-host with the Android SDK installed.
+host with the SDK installed.
 
 ---
 
-## The layout policy
+## What works today
 
-`LayoutPolicy.decide(WindowGeometry) -> LauncherLayout` is a pure function of
-**window** size. Not display size, not device model.
+Everything in `:core`, all of it tested:
 
-Breakpoints mirror Jetpack WindowManager:
+| Area | Implemented |
+| --- | --- |
+| Adaptive layout policy | Hotseat position + capacity, pane mode, workspace grid, drawer columns, search row — all a pure function of window size |
+| Application catalogue | Immutable snapshot; add / remove / update / unavailable handled |
+| Search | Case- and accent-insensitive, six ranked match qualities, deterministic ordering |
+| Sorting | Alphabetical, reverse, by package — all total and stable |
+| Launch failure policy | Five outcomes mapped to recovery actions; none of them silent |
 
-| Width | Class | Height | Class |
-| --- | --- | --- | --- |
-| < 600dp | COMPACT | < 480dp | COMPACT |
-| 600–839dp | MEDIUM | 480–899dp | MEDIUM |
-| ≥ 840dp | EXPANDED | ≥ 900dp | EXPANDED |
+## What is written but unverified
 
-Resulting layouts:
+Everything in `:app`: the Compose UI (home screen, app drawer, search field, app
+grid, tiles, hotseat), package discovery via `LauncherApps`, the icon cache, the
+launcher activity and manifest. **None of it has been compiled.**
 
-| Window | Width class | Hotseat | Panes | Grid |
+---
+
+## The adaptive rule
+
+Layout is a pure function of **window** size. Not display size, not device model.
+
+| Window | Width class | Hotseat | Panes | Drawer cols |
 | --- | --- | --- | --- | --- |
-| Phone portrait (411×891) | COMPACT | bottom | single | 4×5 |
-| Foldable closed (360×816) | COMPACT | bottom | single | 4×5 |
-| Split-screen (411×400) | COMPACT | bottom | single | 4×3 |
-| Foldable open (674×841) | MEDIUM | bottom | single | 6×5 |
-| Tablet portrait (800×1280) | MEDIUM | bottom | single | 6×6 |
-| Phone landscape (891×411) | **EXPANDED** | side | dual | 8×3 |
-| Tablet landscape (1280×800) | EXPANDED | side | dual | 8×5 |
-| Desktop (1920×1080) | EXPANDED | side | dual | 8×6 |
+| Phone portrait (411×891) | COMPACT | bottom | single | 4 |
+| Foldable closed (360×816) | COMPACT | bottom | single | 4 |
+| Split-screen (411×400) | COMPACT | bottom | single | 4 |
+| Foldable open (674×841) | MEDIUM | bottom | single | 6 |
+| Tablet portrait (800×1280) | MEDIUM | bottom | single | 6 |
+| Phone landscape (891×411) | **EXPANDED** | side | dual | 8 |
+| Tablet landscape (1280×800) | EXPANDED | side | dual | 8 |
+| Desktop (1920×1080) | EXPANDED | side | dual | 8 |
 
-### The row worth staring at
+**The row worth staring at:** a large phone in landscape is an EXPANDED window
+and gets the same treatment as a tablet, because at 891dp wide that is what it
+is. The first version of that test asserted a compact layout and failed —
+correctly. Any code reasoning from "this is a phone" would lay out an 891dp
+window as if it were narrow and waste most of it.
 
-A **large phone in landscape is an EXPANDED window** and gets the same treatment
-as a tablet, because at 891dp wide that is what it is.
-
-This was not the original assumption. The first version of the test asserted a
-phone in landscape would get a compact layout, and it failed — correctly. Any
-code reasoning from "this is a phone" would lay out a 891dp window as if it were
-narrow and waste most of it. That single case is the clearest argument for the
-whole design.
+There is no `isTablet()` anywhere, and there cannot be: `:core` has no Android
+dependency, so device-identity APIs are not on its classpath at all.
 
 ---
 
 ## Tests
 
-19 tests, all passing. Beyond the per-geometry cases:
+**80 passing**, all in `:core`, all runnable without a device:
 
-- **`identical window sizes produce identical layouts regardless of device`** —
-  a tablet in split-screen and a phone produce byte-identical layouts. This is
-  the test that justifies the architecture.
-- **`unfolding changes the layout`** — window size changes mid-session without
-  the device changing.
-- **`every plausible window size yields a usable layout`** — sweeps ~46,000
-  sizes from 200×200 to 2000×2000, catching discontinuities that named cases miss.
-- **`workspace capacity is monotonic in window size`** — a bigger window never
-  produces a smaller workspace.
-- **`side hotseat only ever appears on wide landscape windows`** and
-  **`dual pane only ever appears on expanded width`** — invariants asserted
-  across the input space, not just at sample points.
-- **`decide is pure`** — same input, same output, 100 times.
+| Suite | Tests | Covers |
+| --- | --- | --- |
+| `AppSearcherTest` | 18 | Match qualities, ranking, determinism, empty states, large-catalogue speed |
+| `AppCatalogTest` | 16 | Package add/remove/update/unavailable, immutability, multi-profile |
+| `LayoutPolicyTest` | 14 | Per-geometry layouts, ~46,000-point sweep, monotonicity, invariants |
+| `AppSorterTest` | 7 | Ordering, accents, stability, totality |
+| `DrawerBreakpointTest` | 7 | Exact breakpoints; columns change at exactly two widths; height-independent |
+| `TextNormalizerTest` | 7 | Case, accents, locale-invariance, separators |
+| `LaunchRecoveryTest` | 6 | Every failure path; none silent |
+| `WindowSizeClassTest` | 5 | Breakpoint boundaries, validation |
+
+Highlights:
+
+- `identical window sizes produce identical layouts regardless of device` — a
+  tablet in split-screen and a phone produce byte-identical layouts.
+- `column count changes at exactly two widths across the whole range` — a resize
+  cannot reflow the grid anywhere unexpected.
+- `no failure outcome is silently ignored` — a tap that does nothing is the worst
+  outcome, so every failure has a user-visible response.
+
+**Blocked, not passing:** `:app` compilation, `:app` unit tests, and all
+`:uitest` instrumented tests. No Android SDK, and no KVM for an emulator.
+
+---
+
+## Security posture
+
+- **One permission:** `QUERY_ALL_PACKAGES`. Visibility, not capability.
+- **No `INTERNET`** — a compromised launcher cannot exfiltrate.
+- No root, no reflection, no hidden APIs, no storage access, no overlays.
+- No `INSTALL_PACKAGES` or `REQUEST_INSTALL_PACKAGES`.
+- No signing configuration; platform signing happens in the AOSP build.
+- All dependency versions pinned; no dynamic versions.
+
+Enforced by `scripts/check-launcher-constraints.sh` (10 checks), which has been
+negative-tested against deliberately planted violations.
 
 ---
 
 ## Not implemented
 
-- Workspace, hotseat, and app drawer rendering — Phase 4
-- App list, icons, labels, folders, widgets — Phase 4
-- Search and predictive back — Phase 4
-- Wallpaper integration — Phase 4
-- Soong (`Android.bp`) build for the AOSP tree — Phase 4
-- Everything in `:app` is uncompiled and unverified
-
-## Security notes
-
-- **No signing configuration.** Platform signing happens in the AOSP build;
-  release keys never live in this repository.
-- **Minimal permissions.** `QUERY_ALL_PACKAGES` only, which a launcher genuinely
-  needs to list apps. Not requested: `INSTALL_PACKAGES`,
-  `REQUEST_INSTALL_PACKAGES`, `SYSTEM_ALERT_WINDOW`, storage, `INTERNET`. Every
-  permission is one an attacker inherits if the launcher is compromised.
-- **Pinned dependency versions.** No dynamic versions; they would make builds
-  non-reproducible and widen the supply-chain surface.
+Workspace pages, folders, widgets, drag and drop, app shortcuts, notification
+badges, work-profile tab, icon packs, predictive back, wallpaper *selection*,
+Soong (`Android.bp`) build files. All Phase 4.

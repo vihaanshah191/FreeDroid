@@ -4,22 +4,52 @@
 
   NOT YET BUILT OR INSTALLED. Unverified.
 
-  Deliberately minimal on permissions. A launcher needs very little, and every
-  permission added here is one an attacker inherits if the launcher is ever
-  compromised. See docs/security/SECURITY_MODEL.md section T2.
+  PERMISSION POLICY
+  =================
+  The launcher is not a privileged component and must not become one. Every
+  permission it holds is a permission an attacker inherits if the launcher is
+  ever compromised, so the list below is argued rather than assumed.
+  See docs/security/SECURITY_MODEL.md section T2.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Needed to list installed applications for the app drawer. This is the
-         one broad permission a launcher genuinely requires. -->
+    <!--
+      REQUIRED. Lets the launcher enumerate installed applications so it can
+      show them in the drawer. Since Android 11 package visibility is filtered
+      by default, and a launcher genuinely needs to see everything launchable.
+
+      This is the ONLY broad permission the launcher requests. It grants
+      visibility, not capability: it cannot install, modify, or access the data
+      of any package it can see.
+    -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!-- Deliberately NOT requested:
-           INSTALL_PACKAGES         - privileged; no FreeDroid app holds it
-           REQUEST_INSTALL_PACKAGES - the launcher does not install anything
-           SYSTEM_ALERT_WINDOW      - no overlays
-           READ_EXTERNAL_STORAGE    - wallpapers go through the Photo Picker
-           INTERNET                 - the launcher has no network need -->
+    <!--
+      Declared so the launcher can see and start activities across work profiles.
+      Normal-protection level; granted at install with no user prompt.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <!--
+      DELIBERATELY NOT REQUESTED
+      ==========================
+        INSTALL_PACKAGES          privileged; no FreeDroid app holds it
+        REQUEST_INSTALL_PACKAGES  the launcher installs nothing
+        SYSTEM_ALERT_WINDOW       no overlays; a launcher does not need to draw
+                                  over other apps and it is a phishing primitive
+        READ_EXTERNAL_STORAGE     wallpaper is composited by the system via
+                                  windowShowWallpaper, so the bitmap is never read
+        MANAGE_EXTERNAL_STORAGE   no filesystem access of any kind
+        INTERNET                  the launcher has no network need; omitting it
+                                  means a compromised launcher cannot exfiltrate
+        BIND_APPWIDGET            widgets are Phase 4 and will be re-argued then
+        EXPAND_STATUS_BAR         not required for this version
+    -->
 
     <application
         android:label="@string/app_name"
@@ -29,20 +59,27 @@
         android:theme="@style/Theme.FreeDroidLauncher">
 
         <activity
-            android:name=".app.LauncherActivity"
+            android:name=".LauncherActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
             android:excludeFromRecents="true"
             android:screenOrientation="unspecified"
             android:resizeableActivity="true"
-            android:windowSoftInputMode="adjustPan"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density">
 
+            <!-- Makes the activity eligible to become the default HOME app.
+                 The user chooses; the launcher cannot make itself default. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <!-- Marks this as a launcher for the system's own purposes. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER_APP" />
             </intent-filter>
         </activity>

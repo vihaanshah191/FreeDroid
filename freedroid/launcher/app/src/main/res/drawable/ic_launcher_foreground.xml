@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Placeholder launcher icon. FreeDroid branding is Phase 4 and arrives through
+  vendor/freedroid/overlay as an RRO, so this deliberately carries no brand mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 L72,42 L72,66 L54,78 L36,66 L36,42 Z" />
+</vector>

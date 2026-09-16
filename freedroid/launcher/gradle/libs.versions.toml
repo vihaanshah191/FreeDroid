@@ -3,27 +3,59 @@
 # Every version is pinned. Unpinned or dynamic versions ("+", "latest.release")
 # are prohibited: they make builds non-reproducible and silently widen the
 # supply-chain surface. See docs/security/SECURITY_MODEL.md section T10.
+#
+# Android-side versions were confirmed to exist on Google Maven by a read-only
+# query, but NONE of them has been resolved or compiled: the Android SDK is
+# absent from the current development container. Treat the Android half of this
+# file as unverified until :app builds somewhere with an SDK.
 
 [versions]
-kotlin         = "2.0.21"
-junit          = "5.11.4"
-# Android-side versions. Not resolvable in the current development container
-# (no Android SDK); used only when the app module is built on a host that has it.
-agp            = "8.7.3"
-androidxCore   = "1.15.0"
-androidxWindow = "1.3.0"
-androidxActivity = "1.9.3"
+kotlin           = "2.0.21"
+junit            = "5.11.4"
+junitPlatform    = "1.11.4"
+
+# --- Android (unresolved here) ---
+agp              = "8.7.3"
+composeBom       = "2025.06.00"
+androidxCore     = "1.15.0"
+androidxActivity = "1.10.1"
+androidxLifecycle = "2.8.7"
+androidxWindow   = "1.3.0"
+coroutines       = "1.9.0"
+androidxTestJunit = "1.2.1"
+androidxTestRunner = "1.6.2"
+espresso         = "3.6.1"
 
 [libraries]
-junit-jupiter        = { module = "org.junit.jupiter:junit-jupiter",        version.ref = "junit" }
-junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }
-kotlin-test          = { module = "org.jetbrains.kotlin:kotlin-test",       version.ref = "kotlin" }
+junit-jupiter           = { module = "org.junit.jupiter:junit-jupiter",            version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
+kotlin-test             = { module = "org.jetbrains.kotlin:kotlin-test",           version.ref = "kotlin" }
 
-androidx-core-ktx    = { module = "androidx.core:core-ktx",                 version.ref = "androidxCore" }
-androidx-window      = { module = "androidx.window:window",                 version.ref = "androidxWindow" }
-androidx-activity    = { module = "androidx.activity:activity-ktx",         version.ref = "androidxActivity" }
+# --- Android ---
+androidx-core-ktx        = { module = "androidx.core:core-ktx",             version.ref = "androidxCore" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
+androidx-window          = { module = "androidx.window:window",             version.ref = "androidxWindow" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+compose-bom              = { module = "androidx.compose:compose-bom",       version.ref = "composeBom" }
+compose-ui               = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics      = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-material3        = { module = "androidx.compose.material3:material3" }
+compose-material-icons   = { module = "androidx.compose.material:material-icons-core" }
+
+# --- Android test ---
+androidx-test-junit      = { module = "androidx.test.ext:junit",            version.ref = "androidxTestJunit" }
+androidx-test-runner     = { module = "androidx.test:runner",               version.ref = "androidxTestRunner" }
+espresso-core            = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+compose-ui-test-junit4   = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 
 [plugins]
-kotlin-jvm     = { id = "org.jetbrains.kotlin.jvm",     version.ref = "kotlin" }
-android-app    = { id = "com.android.application",      version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm       = { id = "org.jetbrains.kotlin.jvm",           version.ref = "kotlin" }
+android-app      = { id = "com.android.application",            version.ref = "agp" }
+android-library  = { id = "com.android.library",                version.ref = "agp" }
+kotlin-android   = { id = "org.jetbrains.kotlin.android",       version.ref = "kotlin" }
+kotlin-compose   = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FreeDroid Launcher</string>
+
+    <!-- App drawer search -->
+    <string name="search_label">Search apps</string>
+    <string name="search_hint">Type an app name</string>
+    <string name="search_clear">Clear search</string>
+
+    <!-- Drawer states -->
+    <string name="drawer_loading">Loading apps…</string>
+    <string name="drawer_empty">No apps found on this device.</string>
+    <string name="drawer_no_results">No apps match “%1$s”</string>
+
+    <!-- Launch failures. A tap that does nothing is the worst outcome, so every
+         failure path has a message. -->
+    <string name="launch_failed_missing">That app is no longer available. Refreshing…</string>
+    <string name="launch_failed_generic">Couldn’t open that app.</string>
 </resources>

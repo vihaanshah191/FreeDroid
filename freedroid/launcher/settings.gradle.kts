@@ -6,9 +6,12 @@
 //          policy. Builds and tests anywhere a JDK exists, including the
 //          current development container.
 //
-//   :app   the Android launcher itself. Requires the Android SDK, which is NOT
-//          installed in the current development container, so this module is
-//          authored but not built here.
+//   :app   the Android launcher itself (launcher-app). Requires the Android
+//          SDK, which is NOT installed in the current development container, so
+//          this module is authored but not built here.
+//
+//   :uitest instrumented UI tests (launcher-test). Requires the SDK to compile
+//          AND a device or emulator to run. Neither is available here.
 //
 // The split is architectural, not a workaround. Because :core cannot see the
 // Android API surface, it cannot branch on device category — the rule in
@@ -48,10 +51,11 @@ val androidSdkDir: String? = System.getenv("ANDROID_HOME")
 
 if (androidSdkDir != null && file(androidSdkDir).isDirectory) {
     include(":app")
-    logger.lifecycle("Android SDK found at $androidSdkDir - :app module included.")
+    include(":uitest")
+    logger.lifecycle("Android SDK found at $androidSdkDir - :app and :uitest included.")
 } else {
     logger.lifecycle(
-        "Android SDK not found - :app module SKIPPED. " +
+        "Android SDK not found - :app and :uitest SKIPPED. " +
         "Only :core will build. Set ANDROID_HOME to build the launcher itself."
     )
 }
