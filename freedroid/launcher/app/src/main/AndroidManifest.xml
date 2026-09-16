@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FreeDroid Launcher manifest.
+
+  NOT YET BUILT OR INSTALLED. Unverified.
+
+  Deliberately minimal on permissions. A launcher needs very little, and every
+  permission added here is one an attacker inherits if the launcher is ever
+  compromised. See docs/security/SECURITY_MODEL.md section T2.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Needed to list installed applications for the app drawer. This is the
+         one broad permission a launcher genuinely requires. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Deliberately NOT requested:
+           INSTALL_PACKAGES         - privileged; no FreeDroid app holds it
+           REQUEST_INSTALL_PACKAGES - the launcher does not install anything
+           SYSTEM_ALERT_WINDOW      - no overlays
+           READ_EXTERNAL_STORAGE    - wallpapers go through the Photo Picker
+           INTERNET                 - the launcher has no network need -->
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FreeDroidLauncher">
+
+        <activity
+            android:name=".app.LauncherActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="true"
+            android:screenOrientation="unspecified"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER_APP" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

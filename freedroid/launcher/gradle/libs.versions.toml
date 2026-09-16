@@ -1,0 +1,29 @@
+# FreeDroid Launcher — dependency catalogue.
+#
+# Every version is pinned. Unpinned or dynamic versions ("+", "latest.release")
+# are prohibited: they make builds non-reproducible and silently widen the
+# supply-chain surface. See docs/security/SECURITY_MODEL.md section T10.
+
+[versions]
+kotlin         = "2.0.21"
+junit          = "5.11.4"
+# Android-side versions. Not resolvable in the current development container
+# (no Android SDK); used only when the app module is built on a host that has it.
+agp            = "8.7.3"
+androidxCore   = "1.15.0"
+androidxWindow = "1.3.0"
+androidxActivity = "1.9.3"
+
+[libraries]
+junit-jupiter        = { module = "org.junit.jupiter:junit-jupiter",        version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }
+kotlin-test          = { module = "org.jetbrains.kotlin:kotlin-test",       version.ref = "kotlin" }
+
+androidx-core-ktx    = { module = "androidx.core:core-ktx",                 version.ref = "androidxCore" }
+androidx-window      = { module = "androidx.window:window",                 version.ref = "androidxWindow" }
+androidx-activity    = { module = "androidx.activity:activity-ktx",         version.ref = "androidxActivity" }
+
+[plugins]
+kotlin-jvm     = { id = "org.jetbrains.kotlin.jvm",     version.ref = "kotlin" }
+android-app    = { id = "com.android.application",      version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

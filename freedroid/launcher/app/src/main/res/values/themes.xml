@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Wallpaper-backed, edge-to-edge, no action bar - the standard launcher
+      treatment. Branding colours arrive in Phase 4 via vendor/freedroid/overlay
+      as RROs, not hard-coded here, so the launcher stays themeable without a
+      source change.
+    -->
+    <style name="Theme.FreeDroidLauncher" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+    </style>
+</resources>
