@@ -305,10 +305,40 @@ See `docs/development/TESTING.md` for the full picture.
 | `:core` unit tests | JVM | ✅ **80 passing** |
 | `verifyNoAndroidDependencies` | Gradle | ✅ passing, negative-tested |
 | `check-launcher-constraints.sh` | shell | ✅ 10 checks passing, negative-tested |
-| Gradle configuration of `:app` / `:uitest` | Gradle | ✅ configures cleanly |
+| Gradle configuration of `:app` / `:uitest` | Gradle | ✅ configures cleanly on AGP 8.11.1 |
+| Android static checks (`check-android-static.sh`) | shell | ✅ 12 checks passing, negative-tested |
 | `:app` compilation | Android SDK | ⛔ **blocked — no SDK** |
 | `:app` unit tests | Android SDK | ⛔ **blocked — no SDK** |
 | `:uitest` instrumented tests | SDK + device | ⛔ **blocked — no SDK, no KVM** |
 
 Nothing in `:app` or `:uitest` has been executed. Those rows are blocked, not
 passing, and are not counted anywhere as evidence.
+
+
+---
+
+## 11. Toolchain versions
+
+| Component | Version | Note |
+| --- | --- | --- |
+| Android Gradle Plugin | **8.11.1** | AGP 8.7.x supports `compileSdk` 35 at most and hard-errors on 36 |
+| Gradle | 8.14.3 | Satisfies AGP 8.11's requirement of 8.13+ |
+| Kotlin | 2.0.21 | Unchanged — `:core` and its 80 tests already build on it |
+| Compose compiler | 2.0.21 | Ships with Kotlin; applied via `org.jetbrains.kotlin.plugin.compose` |
+| Compose BOM | 2025.06.00 | Manages all `androidx.compose.*` versions |
+| `compileSdk` / `targetSdk` | 36 | Matches the FreeDroid Android 16 baseline |
+| `minSdk` | 33 | |
+| JVM target | 17 | Both `:core` and `:app` |
+
+### Required Android SDK components
+
+Named by AGP itself when the build is pointed at an empty SDK directory:
+
+```text
+platforms;android-36      Android SDK Platform 36
+build-tools;35.0.0        Android SDK Build-Tools 35   (AGP 8.11.1's default)
+cmdline-tools;latest      to run sdkmanager
+```
+
+Plus SDK licence acceptance. **None of these is installed**, which is the sole
+remaining blocker to compiling `:app`.

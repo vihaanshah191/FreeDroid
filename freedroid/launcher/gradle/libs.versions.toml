@@ -15,7 +15,10 @@ junit            = "5.11.4"
 junitPlatform    = "1.11.4"
 
 # --- Android (unresolved here) ---
-agp              = "8.7.3"
+# AGP 8.7.x supports compileSdk 35 at most and hard-errors on 36.
+# compileSdk 36 (Android 16, the FreeDroid baseline) needs AGP 8.9+.
+# 8.11.1 is matched to Gradle 8.14.3 in this environment.
+agp              = "8.11.1"
 composeBom       = "2025.06.00"
 androidxCore     = "1.15.0"
 androidxActivity = "1.10.1"
@@ -57,5 +60,6 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 kotlin-jvm       = { id = "org.jetbrains.kotlin.jvm",           version.ref = "kotlin" }
 android-app      = { id = "com.android.application",            version.ref = "agp" }
 android-library  = { id = "com.android.library",                version.ref = "agp" }
+android-test     = { id = "com.android.test",                   version.ref = "agp" }
 kotlin-android   = { id = "org.jetbrains.kotlin.android",       version.ref = "kotlin" }
 kotlin-compose   = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

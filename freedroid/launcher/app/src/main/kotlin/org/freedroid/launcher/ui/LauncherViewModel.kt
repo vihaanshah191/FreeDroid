@@ -107,7 +107,7 @@ internal class LauncherViewModel(application: Application) : AndroidViewModel(ap
 
     private fun observePackageChanges() {
         viewModelScope.launch {
-            source.packageChanges(this).collect { change ->
+            source.packageChanges().collect { change ->
                 // Icons can change without the entry changing, e.g. a themed-icon
                 // update, so evict on any change to the package.
                 iconCache.evictPackage(change.packageName)

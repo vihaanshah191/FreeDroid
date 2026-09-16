@@ -19,7 +19,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 | --- | --- | --- | --- |
 | `:core` | launcher-core | Pure Kotlin/JVM | ✅ **Yes** — 80 tests passing |
 | `:app` | launcher-app | Android application | ❌ Needs the Android SDK |
-| `:uitest` | launcher-test | Instrumented UI tests | ❌ Needs SDK **and** a device |
+| `:uitest` | launcher-test | Instrumented UI tests (`com.android.test`) | ❌ Needs SDK **and** a device |
 
 `:app` and `:uitest` are included only when an Android SDK is present, so
 `gradle build` works here and builds `:core` alone.
@@ -35,9 +35,21 @@ gradle :core:test     # 80 unit tests
 gradle :core:check    # tests + the no-Android-dependency guard
 gradle build          # :core only, unless ANDROID_HOME is set
 
-# From the repository root — structural + security constraints, no SDK needed
-./scripts/check-launcher-constraints.sh
+# From the repository root — no SDK needed for either
+./scripts/check-launcher-constraints.sh   # 10 architecture/security constraints
+./scripts/check-android-static.sh         # 12 resource/manifest/module checks
 ```
+
+### To compile `:app` you need
+
+```text
+platforms;android-36      Android SDK Platform 36
+build-tools;35.0.0        Android SDK Build-Tools 35
+cmdline-tools;latest      to run sdkmanager
+```
+
+(AGP named these itself when pointed at an empty SDK directory.) Set
+`ANDROID_HOME` and `:app` and `:uitest` join the build automatically.
 
 Verified on Gradle 8.14.3 / OpenJDK 21. Requires Maven Central and Google Maven.
 

@@ -6,7 +6,6 @@ import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -55,9 +54,11 @@ internal class PackageAppSource(context: Context) {
      *
      * Emissions are already translated into `:core` types, so the collector never
      * touches an Android class. Registration and unregistration are tied to
-     * collection, so a cancelled scope cannot leak the callback.
+     * collection via [callbackFlow]'s `awaitClose`, so a cancelled collector
+     * cannot leak the platform callback. No external scope is needed or taken:
+     * the flow's own lifetime is the callback's lifetime.
      */
-    fun packageChanges(scope: CoroutineScope): Flow<PackageChange> = callbackFlow {
+    fun packageChanges(): Flow<PackageChange> = callbackFlow {
         val callback = object : LauncherApps.Callback() {
 
             override fun onPackageAdded(packageName: String, user: UserHandle) {

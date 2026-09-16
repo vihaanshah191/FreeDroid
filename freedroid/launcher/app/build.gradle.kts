@@ -68,11 +68,12 @@ dependencies {
     // source of layout and filtering decisions; :app renders what it returns.
     implementation(project(":core"))
 
+    // Arrives transitively via activity-compose; declared explicitly so its
+    // version is pinned rather than resolved transitively.
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.window)
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(platform(libs.compose.bom))
