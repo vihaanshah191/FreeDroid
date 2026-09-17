@@ -124,6 +124,20 @@ AOSP sources are reachable. Bandwidth/throughput for a multi-hundred-GB sync was
 | `imagemagick` | ❌ missing |
 | `xmlstarlet` | ❌ missing |
 
+> **Correction (2026-09-17).** Three names in this list do not exist on Ubuntu
+> 24.04 and were carried over from older AOSP setup guides without checking:
+> `git-core` (transitional, removed — use `git`), `libncurses5` (removed — use
+> `libncurses-dev` + `libtinfo6`), and `qemu-kvm` (renamed `qemu-system-x86`).
+> Verified package-by-package against apt on noble. The corrected list lives in
+> `scripts/setup-build-host.sh` and [`BUILD_HOST.md`](BUILD_HOST.md) §4; do not
+> copy the names above.
+
+> **Update (2026-09-17).** The Android SDK is now installed at
+> `/opt/android-sdk` (`platforms;android-36`, `build-tools;35.0.0`,
+> `cmdline-tools;latest`), and the launcher's `:app` and `:uitest` modules build
+> against it. The SDK rows below reflect the state at audit time. Disk, RAM,
+> core count and the absent `/dev/kvm` are unchanged and still block AOSP.
+
 ### Already satisfied
 
 `build-essential`, `gcc` 13.3.0, `g++`, `make` 4.3, `cmake`, `ninja`, `bison`, `zip`, `unzip`, `bc`, `curl`, `openssl`, `zlib1g-dev`, `libx11-dev`, `x11proto-core-dev`, `libxml2-utils`, `fontconfig`, `gnupg`, `python3-pip`.

@@ -102,13 +102,28 @@ sudo usermod -aG kvm,cvdnetwork,render "$USER"   # then log out and back in
 
 ### 3.1 Packages
 
+Use the script rather than a hand-copied list:
+
+```bash
+sudo ./scripts/setup-build-host.sh --with-cuttlefish
+```
+
+If installing by hand, note that **three names in widely-copied AOSP guides no
+longer exist on Ubuntu 24.04** — verified against apt on noble:
+
+| Guide says | Use instead |
+| --- | --- |
+| `git-core` | `git` (transitional package removed) |
+| `libncurses5` | `libncurses-dev` + `libtinfo6` |
+| `qemu-kvm` | `qemu-system-x86` |
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  git-core gnupg flex bison build-essential zip curl zlib1g-dev \
-  libc6-dev-i386 libncurses5 lib32z1-dev libgl1-mesa-dev libxml2-utils \
-  xsltproc unzip fontconfig rsync ccache lz4 gperf python3 python3-pip \
-  openjdk-21-jdk imagemagick xmlstarlet
+  git git-lfs gnupg flex bison build-essential zip unzip curl rsync \
+  zlib1g-dev libc6-dev-i386 libncurses-dev libtinfo6 lib32z1-dev \
+  libgl1-mesa-dev libxml2-utils xsltproc fontconfig ccache lz4 gperf \
+  python3 python3-pip openjdk-21-jdk imagemagick xmlstarlet bc libssl-dev
 ```
 
 **Status in the current container** (from the audit):
@@ -136,7 +151,8 @@ used only for auxiliary tooling and does not determine the build.
 
 ### 3.4 `repo`
 
-**Status: not installed in the current container.**
+**Status: not installed in the current container.** Installed by
+`scripts/setup-build-host.sh`.
 
 ```bash
 mkdir -p ~/.local/bin
@@ -148,7 +164,9 @@ repo --version
 
 ### 3.5 Android SDK and platform-tools
 
-**Status: not installed in the current container.** Not required for an AOSP
+**Status: installed at `/opt/android-sdk`** in the current container
+(`platforms;android-36`, `build-tools;35.0.0`, `cmdline-tools;latest`); the
+launcher's `:app` and `:uitest` modules build against it. Not required for an AOSP
 platform build — AOSP builds its own `adb`, `aapt2`, and `apksigner` — but needed
 for standalone Gradle app development and for device interaction.
 

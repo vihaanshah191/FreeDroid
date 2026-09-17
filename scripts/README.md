@@ -2,11 +2,33 @@
 
 | Script | Purpose | Status |
 | --- | --- | --- |
-| `validate-structure.sh` | Validates repository structure, docs, and manifest | ✅ implemented |
+| `validate-structure.sh` | Repository structure, docs, manifest, secrets | ✅ 47 checks |
+| `check-launcher-constraints.sh` | Launcher architecture and security constraints | ✅ 10 checks |
+| `check-android-static.sh` | Android resources, manifest, merged manifest, APK audit | ✅ 17 checks |
+| `setup-build-host.sh` | Provision an Ubuntu host for AOSP builds and Cuttlefish | ✅ implemented |
+| `verify-build-host.sh` | Verify a host is genuinely AOSP-ready (read-only) | ✅ implemented |
 | `sync.sh` | Sync an AOSP workspace with the FreeDroid overlay | ⬜ Phase 1 |
 | `build.sh` | Build wrapper with variant selection | ⬜ Phase 1 |
 | `verify-build-variant.sh` | **Release gate** — fails a `user` build carrying debug settings | ⬜ Phase 9 |
 | `run-security-tests.sh` | Execute the SEC suite against a booted image | ⬜ Phase 9 |
+
+## Build host
+
+```bash
+./scripts/setup-build-host.sh --check-only     # preflight, installs nothing
+sudo ./scripts/setup-build-host.sh --with-cuttlefish
+./scripts/verify-build-host.sh                 # read-only readiness check
+```
+
+Both are idempotent. `setup-build-host.sh` **refuses to install on a host that
+cannot build AOSP** unless given `--force`, and even then never reports the host
+as ready. The two scripts are separate on purpose: "setup ran" and "this host
+can build AOSP" are different claims.
+
+Preflight was tested against the development container and correctly reports all
+four blockers (cores, RAM, disk, absent `/dev/kvm`) with exit code 1.
+
+See [`../docs/development/BUILD_HOST.md`](../docs/development/BUILD_HOST.md).
 
 ## `validate-structure.sh`
 
