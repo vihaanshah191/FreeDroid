@@ -126,11 +126,14 @@ done
 [ "$AOSP_MARKERS" -eq 0 ] && ok "no AOSP source vendored (ADR-0001 holds)"
 
 # A vendored AOSP tree would be enormous; flag unexpected bulk.
-SIZE_KB=$(du -sk --exclude=.git . 2>/dev/null | cut -f1)
+# Measure only tracked content. Build output (APKs, Gradle intermediates) is
+# gitignored and transient, and counting it makes an overlay repo look vendored.
+SIZE_KB=$(git ls-files -z 2>/dev/null | du -ck --files0-from=- 2>/dev/null | tail -1 | cut -f1)
+SIZE_KB=${SIZE_KB:-0}
 if [ "${SIZE_KB:-0}" -gt 51200 ]; then
-  warn "working tree is ${SIZE_KB} KB - unexpectedly large for an overlay repo"
+  warn "tracked content is ${SIZE_KB} KB - unexpectedly large for an overlay repo"
 else
-  ok "working tree size ${SIZE_KB} KB (overlay-sized)"
+  ok "tracked content ${SIZE_KB} KB (overlay-sized; build output excluded)"
 fi
 
 # ---------------------------------------------------------------------------

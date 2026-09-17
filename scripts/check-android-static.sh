@@ -176,6 +176,66 @@ if os.path.isdir(ui):
           "uitest does not declare a direct project dependency on :app",
           "uitest declares project(\":app\") — AGP rejects depending on an application module")
 
+section("9. Built artifact audit (only when a build exists)")
+# The source manifest is not the shipped manifest. Dependencies inject
+# permissions and components through manifest merging, so the security claim
+# has to be checked against what is actually built, not what was written.
+merged = sorted(glob.glob(f"{APP}/build/intermediates/merged_manifest/*/*/AndroidManifest.xml"))
+if not merged:
+    print("  SKIP  no build output — run `gradle :app:assembleDebug` first")
+else:
+    BANNED = {"INSTALL_PACKAGES", "REQUEST_INSTALL_PACKAGES", "SYSTEM_ALERT_WINDOW",
+              "WRITE_SECURE_SETTINGS", "MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE",
+              "WRITE_EXTERNAL_STORAGE", "INTERNET", "WRITE_SETTINGS",
+              "PACKAGE_USAGE_STATS", "REQUEST_DELETE_PACKAGES"}
+    for mpath in merged:
+        variant = mpath.split("/")[-3]
+        root_m = ET.parse(mpath).getroot()
+        perms = [e.get(f"{NS}name") for e in root_m.iter("uses-permission")]
+        platform_perms = [p for p in perms if p and p.startswith("android.permission.")]
+        bad_p = [p for p in platform_perms if p.rsplit(".", 1)[-1] in BANNED]
+        check(not bad_p,
+              f"[{variant}] no prohibited permission in the MERGED manifest "
+              f"({len(platform_perms)} platform permission(s): {platform_perms or 'none'})",
+              f"[{variant}] prohibited permission(s) in merged manifest: {bad_p}")
+
+        # Components injected by dependencies are part of the shipped attack
+        # surface even though the source manifest never mentions them.
+        # Normalise relative names: the source writes ".LauncherActivity" while
+        # the merged manifest writes it fully qualified. Comparing them raw makes
+        # our own activity look like a dependency injection.
+        src_names = set()
+        for e in ET.parse(f"{SRC}/AndroidManifest.xml").getroot().iter():
+            n = e.get(f"{NS}name")
+            if n:
+                src_names.add(n)
+                if n.startswith("."):
+                    src_names.add(ns_pkg + n)
+        injected = []
+        for e in root_m.iter():
+            if e.tag in ("activity", "receiver", "provider", "service"):
+                n = e.get(f"{NS}name")
+                if n and n not in src_names:
+                    injected.append((e.tag, n, e.get(f"{NS}exported"), e.get(f"{NS}permission")))
+        if injected:
+            print(f"        [{variant}] components injected by dependencies:")
+            for tag, n, exp, perm in injected:
+                guard = f" guarded by {perm}" if perm else ""
+                print(f"          <{tag}> {n.split('.')[-1]} exported={exp}{guard}")
+        # An exported, unguarded injected component is a real finding.
+        unguarded = [i for i in injected if i[2] == "true" and not i[3]]
+        check(not unguarded,
+              f"[{variant}] no unguarded exported component injected by dependencies",
+              f"[{variant}] unguarded exported injected component(s): {unguarded}")
+
+apks = glob.glob(f"{APP}/build/outputs/apk/release/*.apk")
+if apks:
+    unsigned = all("unsigned" in os.path.basename(a) for a in apks)
+    check(unsigned,
+          f"release APK is unsigned: {[os.path.basename(a) for a in apks]} "
+          f"(platform signing happens in the AOSP build; no keys in this repo)",
+          f"release APK appears signed — a signing config may have been added: {apks}")
+
 print(f"\n{BOLD}Result:{OFF} {passes} passed, {len(fails)} failed")
 if fails:
     print(f"{RED}STATIC CHECKS FAILED{OFF}"); sys.exit(1)

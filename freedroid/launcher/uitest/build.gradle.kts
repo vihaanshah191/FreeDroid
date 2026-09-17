@@ -57,6 +57,10 @@ dependencies {
     implementation(project(":core"))
 
     implementation(platform(libs.compose.bom))
+    // The tests build Compose trees of their own (Box, Modifier.size, ...), so
+    // they need the Compose runtime and foundation, not only the test harness.
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
     implementation(libs.compose.ui.test.junit4)
     implementation(libs.compose.ui.test.manifest)
     implementation(libs.androidx.test.junit)

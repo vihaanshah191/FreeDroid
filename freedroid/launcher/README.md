@@ -5,9 +5,10 @@ can be built and tested without an AOSP tree. Phase 4 folds it into the platform
 build via `PRODUCT_PACKAGES`, replacing Launcher3.
 
 **Status:** the adaptive policy, search, sorting and catalogue are implemented
-and tested — **80 passing tests**. The Android application is written but **has
-never been compiled or run**: the Android SDK is absent from this development
-environment.
+and tested — **80 passing tests**. The Android application **compiles**, passes
+Android Lint with zero findings, and produces debug and release APKs. It has
+**never been installed or run on a device** — there is no emulator here
+(`/dev/kvm` absent), so no runtime behaviour has been observed.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
@@ -17,9 +18,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 | Gradle | Role | Kind | Builds here? |
 | --- | --- | --- | --- |
-| `:core` | launcher-core | Pure Kotlin/JVM | ✅ **Yes** — 80 tests passing |
-| `:app` | launcher-app | Android application | ❌ Needs the Android SDK |
-| `:uitest` | launcher-test | Instrumented UI tests (`com.android.test`) | ❌ Needs SDK **and** a device |
+| `:core` | launcher-core | Pure Kotlin/JVM | ✅ 80 tests passing |
+| `:app` | launcher-app | Android application | ✅ **Compiles; debug + release APKs build** |
+| `:uitest` | launcher-test | Instrumented UI tests (`com.android.test`) | ✅ Compiles — ⛔ cannot **run** (no device) |
 
 `:app` and `:uitest` are included only when an Android SDK is present, so
 `gradle build` works here and builds `:core` alone.
@@ -40,7 +41,9 @@ gradle build          # :core only, unless ANDROID_HOME is set
 ./scripts/check-android-static.sh         # 12 resource/manifest/module checks
 ```
 
-### To compile `:app` you need
+### Building `:app`
+
+Requires an Android SDK with:
 
 ```text
 platforms;android-36      Android SDK Platform 36
@@ -48,8 +51,16 @@ build-tools;35.0.0        Android SDK Build-Tools 35
 cmdline-tools;latest      to run sdkmanager
 ```
 
-(AGP named these itself when pointed at an empty SDK directory.) Set
-`ANDROID_HOME` and `:app` and `:uitest` join the build automatically.
+Set `ANDROID_HOME` and `:app` and `:uitest` join the build automatically; unset
+it and only `:core` builds. Both paths are verified.
+
+```bash
+export ANDROID_HOME=/opt/android-sdk
+gradle :app:assembleDebug      # -> app/build/outputs/apk/debug/app-debug.apk
+gradle :app:assembleRelease    # -> app-release-unsigned.apk (R8, unsigned by design)
+gradle :app:lintDebug          # 0 findings
+gradle :uitest:assembleDebug   # instrumentation APK (cannot be run here)
+```
 
 Verified on Gradle 8.14.3 / OpenJDK 21. Requires Maven Central and Google Maven.
 
@@ -128,14 +139,23 @@ Highlights:
 - `no failure outcome is silently ignored` — a tap that does nothing is the worst
   outcome, so every failure has a user-visible response.
 
-**Blocked, not passing:** `:app` compilation, `:app` unit tests, and all
-`:uitest` instrumented tests. No Android SDK, and no KVM for an emulator.
+**Verified beyond the unit tests:** `:app` and `:uitest` compile; Android Lint
+reports 0 findings; debug and release APKs build; the release APK carries zero
+platform permissions and is unsigned.
+
+**Still blocked:** running anything. `:uitest` needs a device or emulator, and
+`/dev/kvm` is absent. No UI has been rendered, no app discovered or launched, no
+wallpaper displayed, no accessibility behaviour observed.
 
 ---
 
 ## Security posture
 
-- **One permission:** `QUERY_ALL_PACKAGES`. Visibility, not capability.
+- **Zero Android platform permissions in the shipped APK.** An earlier draft
+  declared `QUERY_ALL_PACKAGES`; Android Lint flagged it as an error and was
+  right — the `<queries>` declaration already makes launchable activities
+  visible, so the permission was redundant and broader. Verified against the
+  built APK, not just the source manifest.
 - **No `INTERNET`** — a compromised launcher cannot exfiltrate.
 - No root, no reflection, no hidden APIs, no storage access, no overlays.
 - No `INSTALL_PACKAGES` or `REQUEST_INSTALL_PACKAGES`.

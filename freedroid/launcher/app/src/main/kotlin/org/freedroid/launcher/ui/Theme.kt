@@ -1,12 +1,9 @@
 package org.freedroid.launcher.ui
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
@@ -27,13 +24,11 @@ internal fun FreeDroidLauncherTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val colorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }
+    // minSdk is 33, so dynamic colour is always available. An earlier version
+    // guarded this with SDK_INT >= S and fell back to static schemes; Lint
+    // correctly flagged the check as always true, and the fallbacks were dead.
+    val colorScheme =
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
 
     MaterialTheme(
         colorScheme = colorScheme,

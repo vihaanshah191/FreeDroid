@@ -14,19 +14,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      REQUIRED. Lets the launcher enumerate installed applications so it can
-      show them in the drawer. Since Android 11 package visibility is filtered
-      by default, and a launcher genuinely needs to see everything launchable.
+      NO PERMISSIONS ARE REQUESTED AT ALL.
 
-      This is the ONLY broad permission the launcher requests. It grants
-      visibility, not capability: it cannot install, modify, or access the data
-      of any package it can see.
+      An earlier draft declared QUERY_ALL_PACKAGES. Android Lint flags that as an
+      error, and it was right: the <queries> declaration below already makes
+      every activity with a LAUNCHER category visible, which is exactly and only
+      what a launcher needs to fill its drawer. QUERY_ALL_PACKAGES was both
+      redundant and broader, so it is gone.
+
+      NOT YET VERIFIED ON A DEVICE. If the drawer comes up empty on first device
+      run, package visibility is the first thing to check - but the fix is to
+      justify a narrower <queries> entry, not to reinstate a blanket permission.
     -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <!--
-      Declared so the launcher can see and start activities across work profiles.
-      Normal-protection level; granted at install with no user prompt.
+      Package visibility. Makes launchable activities visible to
+      LauncherApps.getActivityList() without any permission at all.
     -->
     <queries>
         <intent>
@@ -55,6 +58,7 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
         android:theme="@style/Theme.FreeDroidLauncher">
 
@@ -64,7 +68,6 @@
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
             android:excludeFromRecents="true"
-            android:screenOrientation="unspecified"
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density">

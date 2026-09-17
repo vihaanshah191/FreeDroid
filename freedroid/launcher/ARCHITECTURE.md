@@ -1,8 +1,8 @@
 # FreeDroid Launcher — Architecture
 
-**Status:** `:core` is implemented and tested. `:app` and `:uitest` are written
-but **have never been compiled or run** — the Android SDK is absent from the
-development environment.
+**Status:** `:core` is implemented and tested. `:app` and `:uitest` **compile**,
+Lint is clean, and APKs build. Nothing has been **run**: there is no device and
+no emulator (`/dev/kvm` absent).
 
 ---
 
@@ -10,9 +10,9 @@ development environment.
 
 ```text
 freedroid/launcher/
-├── core/      launcher-core   pure Kotlin/JVM   ✅ builds + tests here
-├── app/       launcher-app    Android app       ❌ needs the Android SDK
-└── uitest/    launcher-test   instrumented UI   ❌ needs SDK + a device
+├── core/      launcher-core   pure Kotlin/JVM   ✅ builds + 80 tests
+├── app/       launcher-app    Android app       ✅ compiles, APKs build
+└── uitest/    launcher-test   instrumented UI   ✅ compiles, ⛔ cannot run
 ```
 
 Gradle paths are `:core`, `:app` and `:uitest`; they correspond to the
@@ -307,12 +307,31 @@ See `docs/development/TESTING.md` for the full picture.
 | `check-launcher-constraints.sh` | shell | ✅ 10 checks passing, negative-tested |
 | Gradle configuration of `:app` / `:uitest` | Gradle | ✅ configures cleanly on AGP 8.11.1 |
 | Android static checks (`check-android-static.sh`) | shell | ✅ 12 checks passing, negative-tested |
-| `:app` compilation | Android SDK | ⛔ **blocked — no SDK** |
-| `:app` unit tests | Android SDK | ⛔ **blocked — no SDK** |
-| `:uitest` instrumented tests | SDK + device | ⛔ **blocked — no SDK, no KVM** |
+| `:app` compilation | Android SDK | ✅ **passing** |
+| `:app` debug + release APK | Android SDK | ✅ **passing** (R8 runs on release) |
+| Android Lint | Android SDK | ✅ **0 findings** |
+| `:uitest` compilation | Android SDK | ✅ **passing** |
+| `:uitest` instrumented tests | SDK + **device** | ⛔ **blocked — no `/dev/kvm`** |
 
-Nothing in `:app` or `:uitest` has been executed. Those rows are blocked, not
-passing, and are not counted anywhere as evidence.
+Compiling is not running. No UI has been rendered, no application discovered or
+launched on a device, no wallpaper displayed, and no accessibility behaviour
+observed. Those remain unevidenced.
+
+### Security properties of the built artifact
+
+The source manifest is not the shipped manifest — dependencies inject
+permissions and components through manifest merging. Verified against the built
+APK rather than the source:
+
+| Property | Result |
+| --- | --- |
+| Android platform permissions | **zero** |
+| Injected self-permission | `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, `signature` level, own namespace (androidx.core) |
+| Injected components | `androidx.startup.InitializationProvider` (not exported); `androidx.profileinstaller.ProfileInstallReceiver` (exported, guarded by `android.permission.DUMP`) |
+| Release APK signature | **unsigned** — platform signing happens in the AOSP build |
+
+`scripts/check-android-static.sh` audits the merged manifest and the release APK
+whenever a build exists, so this cannot silently regress.
 
 
 ---
@@ -321,7 +340,7 @@ passing, and are not counted anywhere as evidence.
 
 | Component | Version | Note |
 | --- | --- | --- |
-| Android Gradle Plugin | **8.11.1** | AGP 8.7.x supports `compileSdk` 35 at most and hard-errors on 36 |
+| Android Gradle Plugin | **8.11.1** | AGP 8.7.x supports `compileSdk` 35 at most and hard-errors on 36. Verified building. |
 | Gradle | 8.14.3 | Satisfies AGP 8.11's requirement of 8.13+ |
 | Kotlin | 2.0.21 | Unchanged — `:core` and its 80 tests already build on it |
 | Compose compiler | 2.0.21 | Ships with Kotlin; applied via `org.jetbrains.kotlin.plugin.compose` |
@@ -340,5 +359,24 @@ build-tools;35.0.0        Android SDK Build-Tools 35   (AGP 8.11.1's default)
 cmdline-tools;latest      to run sdkmanager
 ```
 
-Plus SDK licence acceptance. **None of these is installed**, which is the sole
-remaining blocker to compiling `:app`.
+Plus SDK licence acceptance. **Installed at `/opt/android-sdk`**; `:app` and
+`:uitest` build against it.
+
+### Root plugin declaration
+
+All Kotlin plugins *and* AGP are declared in the root build file with
+`apply false`. Both halves are required:
+
+- Declaring nothing makes `:core` and `:app` load the Kotlin plugin
+  independently — Gradle warns that this "is not supported and may break the
+  build", even at identical versions.
+- Declaring only `kotlin-jvm` is worse: `kotlin-jvm` and `kotlin-android` share
+  one artifact, so `:app`'s versioned `kotlin-android` request fails with
+  "already on the classpath with an unknown version".
+- Declaring `kotlin-android` without AGP fails differently again: it resolves
+  `KotlinAndroidTarget` against `com.android.build.gradle.api.BaseVariant` at
+  apply time.
+
+AGP on the root classpath does **not** require an SDK — resolving a plugin and
+applying it are different things. `gradle :core:test` with `ANDROID_HOME` unset
+still builds and passes all 80 tests; that is verified, not assumed.

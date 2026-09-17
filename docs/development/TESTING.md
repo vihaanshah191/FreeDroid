@@ -204,9 +204,16 @@ large part of it is testable **now**, with no AOSP tree and no device.
 | LNC-09 | `verifyNoAndroidDependencies` | — | `:core` cannot acquire an Android dependency | ✅ passing, negative-tested |
 | LNC-10 | `check-launcher-constraints.sh` | 10 | No device-category branching, no prohibited permissions, no root/reflection, no signing config, module boundaries, pinned versions | ✅ passing, negative-tested |
 | LNC-11 | Gradle configuration | — | `:app` and `:uitest` configure cleanly against an SDK path, on AGP 8.11.1 | ✅ passing |
-| LNC-12 | `check-android-static.sh` | 12 | R.* references, XML resource references, manifest components, duplicate resources, ProGuard files, intra-project imports, manifest sanity, test-module structure | ✅ passing, negative-tested |
+| LNC-12 | `check-android-static.sh` | 17 | Source checks (R.*, XML refs, manifest components, duplicates, ProGuard, imports, module structure) **plus** built-artifact audit of the merged manifest and release APK | ✅ passing, negative-tested |
+| LNC-13 | `:app` Kotlin compilation | — | Compiles against the Android SDK | ✅ **passing** |
+| LNC-14 | `:app` debug APK | — | `assembleDebug` produces an installable APK | ✅ **passing** |
+| LNC-15 | `:app` release APK | — | `assembleRelease` with R8 and the ProGuard rules | ✅ **passing** |
+| LNC-16 | Android Lint | — | `lintDebug` on `:app` | ✅ **0 findings** |
+| LNC-17 | `:uitest` compilation | — | `com.android.test` module compiles and packages | ✅ **passing** |
+| LNC-18 | No-SDK path | — | `:core` still builds and tests with `ANDROID_HOME` unset | ✅ **passing** |
 
-**Total: 80 unit tests passing, plus 22 shell-based checks across two scripts.**
+**Total: 80 unit tests passing, 27 shell-based checks, and a full Android build
+including Lint.**
 
 `check-android-static.sh` catches the error classes that are decidable from the
 sources alone. It is **not** a substitute for compiling: it cannot check Kotlin
@@ -217,28 +224,24 @@ types, Compose correctness, or whether an androidx symbol exists.
 These are **written but never executed**. They are not evidence of anything and
 must not be reported as passing.
 
+Compilation is no longer blocked — the SDK is installed at `/opt/android-sdk`
+(`platforms;android-36`, `build-tools;35.0.0`, `cmdline-tools;latest`).
+
+Everything still blocked needs a **device or emulator**, and `/dev/kvm` is
+absent from this environment:
+
 | ID | Suite | Blocked by |
 | --- | --- | --- |
-| LNC-20 | `:app` Kotlin compilation | `platforms;android-36`, `build-tools;35.0.0` not installed |
-| LNC-21 | `:app` JVM unit tests | Same |
-| LNC-22 | Manifest merge, AAPT2 resource compilation, Android Lint | Same |
-| LNC-23 | APK assembly | Same |
-| LNC-24 | `:uitest` compilation | Same |
-| LNC-25 | `:uitest` instrumented UI tests | SDK **and** a device — no `/dev/kvm` for an emulator |
-| LNC-26 | Adaptive reflow on live window resize | Needs a device or emulator |
-| LNC-27 | Accessibility tree assertions | Needs a device or emulator |
-| LNC-28 | Icon-loading performance under scroll | Needs a device |
+| LNC-25 | `:uitest` instrumented UI tests | No device; no `/dev/kvm` for an emulator |
+| LNC-26 | Adaptive reflow on live window resize | Same |
+| LNC-27 | Accessibility tree assertions | Same |
+| LNC-28 | Icon-loading performance under scroll | Same |
+| LNC-29 | Application discovery against a real package manager | Same |
+| LNC-30 | Application launch | Same |
+| LNC-31 | Wallpaper compositing | Same |
 
-The exact SDK components were named by AGP itself, by pointing the build at an
-empty SDK directory — not guessed:
-
-```text
-platforms;android-36      Android SDK Platform 36
-build-tools;35.0.0        Android SDK Build-Tools 35   (AGP 8.11.1's default)
-cmdline-tools;latest      to run sdkmanager
-```
-
-Plus SDK licence acceptance.
+Unlike the SDK, this one cannot be fixed by installing anything: the CPU exposes
+no `vmx`/`svm`, so nested virtualisation is unavailable to this guest.
 
 LNC-15 through LNC-18 are the tests that genuinely require a device. The layout,
 search and catalogue decisions they would exercise are already covered by
@@ -255,11 +258,13 @@ Stated plainly, because a passing unit-test count invites over-reading:
 - No application has been launched.
 - No wallpaper has been displayed.
 - No accessibility behaviour has been observed by a screen reader.
-- The `:app` sources may not even compile. Static checks and Gradle
-  configuration both pass, which rules out *some* error classes (unresolved
-  resources, dangling manifest references, invalid module wiring, plugin and
-  version-compatibility failures) but says nothing about Kotlin type
-  correctness or Compose API usage across ~1,400 unverified lines.
+- The launcher has never been **installed or started**. Compilation and Lint
+  prove the code is well-formed and type-correct; they prove nothing about
+  behaviour. A launcher that compiles can still show an empty drawer, crash on
+  first frame, or fail to be selectable as HOME.
+- One specific risk to check first on a device: `QUERY_ALL_PACKAGES` was removed
+  in favour of the `<queries>` declaration. If the drawer comes up empty, that
+  is where to look.
 
 ---
 
